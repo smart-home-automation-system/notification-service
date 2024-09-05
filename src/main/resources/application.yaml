@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: notification-service
+    version: @project.version@
+  profiles:
+    active: home
+  webflux:
+    base-path: "/home"
+
+server:
+  port: 6200
+
+logbook:
+  format:
+    style: http
+
+logging:
+  level:
+    org.zalando.logbook: trace
+
+---
+
+spring:
+  profiles:
+    active: local
+
+server:
+  port: 6003
+management:
+  server:
+    port: 8003
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: test
