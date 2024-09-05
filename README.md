@@ -19,12 +19,3 @@ General purpose of this service send notification for discord or sms
 
 ---
 
-System includes:
-
-- sensors
-    - Shelly UNI
-        - hot water temperature
-        - circulation temperature
-- actors
-    - Shelly UNI
-        - circulation pump control
