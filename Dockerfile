@@ -11,6 +11,9 @@ COPY --from=builder application/spring-boot-loader/ ./
 COPY --from=builder application/snapshot-dependencies/ ./
 COPY --from=builder application/application/ ./
 
+RUN apk add --no-cache tzdata
+ENV TZ="Europe/Warsaw"
+
 VOLUME /tmp
 USER nobody:nobody
 
