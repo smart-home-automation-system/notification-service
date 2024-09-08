@@ -21,8 +21,9 @@ logging:
 ---
 
 spring:
-  profiles:
-    active: local
+  config:
+    activate:
+      on-profile: local
 
 server:
   port: 6003
