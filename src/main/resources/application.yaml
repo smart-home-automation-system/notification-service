@@ -18,6 +18,11 @@ logging:
   level:
     org.zalando.logbook: trace
 
+discord:
+  bot:
+    skippy:
+      token: ${discord_bot_skippy_token:dummy}
+
 ---
 
 spring:
