@@ -5,7 +5,15 @@ spring:
   profiles:
     active: home
   webflux:
-    base-path: "/home"
+    base-path: "/home/notification"
+  rabbitmq:
+    host: rabbitmq-headless
+    port: 5672
+    username: notification
+    password: ${rabbitmq-password:dummy}
+    virtual-host: /notification
+    connection-timeout: 10s
+    requested-heartbeat: 10s
 
 server:
   port: 6200
@@ -18,6 +26,10 @@ logging:
   level:
     org.zalando.logbook: trace
 
+rabbit:
+  alert:
+    queue: notification.prod.alert
+
 discord:
   bot:
     skippy:
@@ -29,12 +41,18 @@ spring:
   config:
     activate:
       on-profile: local
+  rabbitmq:
+    host: localhost
 
 server:
   port: 6003
 management:
   server:
     port: 8003
+
+rabbit:
+  alert:
+    queue: notification.dev.alert
 
 ---
 
