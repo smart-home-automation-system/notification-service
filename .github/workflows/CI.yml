@@ -2,11 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [feature/**]
-  pull_request:
-    branches: [main]
-    types: [ opened ]
+    branches: [main, 'feature/**']
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
