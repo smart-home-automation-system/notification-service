@@ -1,7 +1,7 @@
 spring:
   application:
     name: notification-service
-    version: @project.version@
+#    version: @project.version@
   profiles:
     active: home
   webflux:

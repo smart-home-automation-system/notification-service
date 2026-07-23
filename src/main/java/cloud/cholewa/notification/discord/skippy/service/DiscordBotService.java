@@ -22,9 +22,9 @@ public class DiscordBotService {
         return skippy.login()
             .flatMap(client -> client.getGuilds()
                 .flatMap(Guild::getChannels)
-                .filter(guildChannel -> guildChannel instanceof TextChannel)
+                .filter(TextChannel.class::isInstance)
                 .cast(TextChannel.class)
-                .filter(textChannel -> textChannel.getName().equalsIgnoreCase("family"))
+                .filter(textChannel -> textChannel.getName().equalsIgnoreCase("alerts"))
                 .flatMap(textChannel -> textChannel.createMessage(message))
                 .then(Mono.empty())
             );
