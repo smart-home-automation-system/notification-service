@@ -27,9 +27,19 @@
 
 # Description
 
-Notification hub for the smart-home-automation-system. It consumes alert messages from
-RabbitMQ and delivers them as **Discord** notifications through a Discord bot
-(`discord4j`). Reactive throughout (Spring WebFlux / Reactor).
+Notification hub for the smart-home-automation-system. It delivers **Discord**
+notifications through a Discord bot (`discord4j`), triggered two ways: by consuming alert
+messages from RabbitMQ, and through a direct HTTP endpoint. Reactive throughout
+(Spring WebFlux / Reactor).
+
+# API
+
+Base path `/home/notification` (`spring.webflux.base-path`); external traffic reaches it
+through `api-gateway-service`.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/home/notification/skippy?message=<text>` | Send `message` to the Discord `alerts` channel. Returns `200 OK`; the `message` query parameter is required (`400 Bad Request` when missing). |
 
 # Messaging
 
