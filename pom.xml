@@ -19,6 +19,8 @@
 
 	<properties>
 		<java.version>21</java.version>
+		<!-- default empty; jacoco:prepare-agent overrides it in the sonar workflow -->
+		<argLine/>
 		<sonar.organization>smart-home-automation-system</sonar.organization>
 		<sonar.projectKey>smart-home-automation-system_notification-service</sonar.projectKey>
 		<sonar.host.url>https://sonarcloud.io</sonar.host.url>
@@ -167,7 +169,7 @@
 				<artifactId>maven-surefire-plugin</artifactId>
 				<version>${maven-surefire-plugin.version}</version>
 				<configuration>
-					<argLine>-javaagent:${org.mockito:mockito-core:jar} -Xshare:off</argLine>
+					<argLine>@{argLine} -javaagent:${org.mockito:mockito-core:jar} -Xshare:off</argLine>
 					<includes>
 						<include>**/*Test.java</include>
 						<include>**/*IT.java</include>
