@@ -20,7 +20,7 @@ server:
 
 logbook:
   format:
-    style: http
+    style: json
 
 logging:
   level:
@@ -49,6 +49,10 @@ server:
 management:
   server:
     port: 8003
+
+logbook:
+  format:
+    style: http
 
 rabbit:
   alert:

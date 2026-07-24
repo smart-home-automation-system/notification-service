@@ -27,7 +27,7 @@
 		<sonar.exclusions>**/model/**/*</sonar.exclusions>
 
 		<discord4j-core.version>3.3.2</discord4j-core.version>
-		<logbook.version>4.0.2</logbook.version>
+		<logbook.version>4.0.4</logbook.version>
 		<mapstruct.version>1.6.3</mapstruct.version>
 
 		<!--  internal dependencies versions-->
@@ -73,19 +73,23 @@
 			</exclusions>
 		</dependency>
 
-		<!-- database -->
+		<!-- required by logbook's WebFluxNettyClientConfiguration; logbook declares it optional -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-http-client</artifactId>
+		</dependency>
 
-<!--		<dependency>-->
-<!--			<groupId>org.zalando</groupId>-->
-<!--			<artifactId>logbook-spring-boot-webflux-autoconfigure</artifactId>-->
-<!--			<version>${logbook.version}</version>-->
-<!--			<exclusions>-->
-<!--				<exclusion>-->
-<!--					<groupId>org.apiguardian</groupId>-->
-<!--					<artifactId>apiguardian-api</artifactId>-->
-<!--				</exclusion>-->
-<!--			</exclusions>-->
-<!--		</dependency>-->
+		<dependency>
+			<groupId>org.zalando</groupId>
+			<artifactId>logbook-spring-boot-webflux-autoconfigure</artifactId>
+			<version>${logbook.version}</version>
+			<exclusions>
+				<exclusion>
+					<groupId>org.apiguardian</groupId>
+					<artifactId>apiguardian-api</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
 
 		<dependency>
 			<groupId>io.micrometer</groupId>
