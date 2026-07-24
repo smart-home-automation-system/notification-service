@@ -20,7 +20,7 @@ server:
 
 logbook:
   format:
-    style: http
+    style: json
 
 logging:
   level:
@@ -50,6 +50,10 @@ management:
   server:
     port: 8003
 
+logbook:
+  format:
+    style: http
+
 rabbit:
   alert:
     queue: notification.dev.alert
@@ -60,3 +64,5 @@ spring:
   config:
     activate:
       on-profile: test
+  autoconfigure:
+    exclude: org.springframework.boot.amqp.autoconfigure.RabbitAutoConfiguration
