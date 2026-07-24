@@ -60,3 +60,5 @@ spring:
   config:
     activate:
       on-profile: test
+  autoconfigure:
+    exclude: org.springframework.boot.amqp.autoconfigure.RabbitAutoConfiguration

@@ -18,6 +18,7 @@ public class DiscordBotController {
 
     @GetMapping
     Mono<ResponseEntity<Void>> sendMessage(@RequestParam String message) {
-        return service.sendMessage(message);
+        return service.sendMessage(message)
+            .thenReturn(ResponseEntity.ok().build());
     }
 }

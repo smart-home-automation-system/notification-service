@@ -29,6 +29,7 @@
 		<mapstruct.version>1.6.3</mapstruct.version>
 
 		<!--  internal dependencies versions-->
+		<cholewa-commons.version>1.1.0</cholewa-commons.version>
 
 		<!--  plugins versions-->
 		<maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
@@ -39,6 +40,11 @@
 
 	<dependencies>
 		<!--  internal dependencies versions-->
+		<dependency>
+			<groupId>cloud.cholewa</groupId>
+			<artifactId>cholewa-commons</artifactId>
+			<version>${cholewa-commons.version}</version>
+		</dependency>
 
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -146,9 +152,22 @@
 
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-dependency-plugin</artifactId>
+				<executions>
+					<execution>
+						<goals>
+							<goal>properties</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
 				<version>${maven-surefire-plugin.version}</version>
 				<configuration>
+					<argLine>-javaagent:${org.mockito:mockito-core:jar} -Xshare:off</argLine>
 					<includes>
 						<include>**/*Test.java</include>
 						<include>**/*IT.java</include>
