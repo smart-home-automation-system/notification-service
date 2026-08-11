@@ -6,6 +6,10 @@ spring:
     active: home
   webflux:
     base-path: "/home/notification"
+  reactor:
+    # default LIMITED restores ThreadLocals only in "tap" and "handle", so traceId would be
+    # missing from the MDC of every log statement inside a reactive chain
+    context-propagation: auto
   rabbitmq:
     host: rabbitmq-headless
     port: 5672
@@ -14,15 +18,42 @@ spring:
     virtual-host: /notification
     connection-timeout: 10s
     requested-heartbeat: 10s
+    listener:
+      simple:
+        # defaults to false; without it the trace breaks at the queue and an alert cannot be
+        # followed back to the service that raised it
+        observation-enabled: true
 
 server:
   port: 6200
+management:
+  server:
+    port: 8200
+  endpoint:
+    health:
+      # a 404 on the readiness path crash-loops the pod, so the probe groups are pinned here
+      # instead of relying on Boot detecting the Kubernetes platform — and kept in the shared
+      # document, where the paths can be exercised locally on 8003 before the manifest ships
+      probes:
+        enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  tracing:
+    sampling:
+      # default 0.1; a home system generates so little traffic that sampling everything is free,
+      # and a partially sampled trace is useless when it is the only record of a request
+      probability: 1.0
 
 logbook:
   format:
     style: json
 
 logging:
+  structured:
+    format:
+      console: logstash
   level:
     org.zalando.logbook: trace
 
@@ -53,6 +84,11 @@ management:
 logbook:
   format:
     style: http
+
+logging:
+  structured:
+    format:
+      console: ""
 
 rabbit:
   alert:
