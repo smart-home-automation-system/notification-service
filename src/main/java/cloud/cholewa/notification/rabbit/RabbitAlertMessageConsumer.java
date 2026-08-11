@@ -21,6 +21,11 @@ public class RabbitAlertMessageConsumer {
             .onErrorResume(throwable -> {
                 log.error("Error while consuming alert message: {}", throwable.getMessage());
                 return Mono.empty();
-            });
+            })
+            //Spring AMQP subscribes without triggering the automatic ThreadLocal capture and,
+            //unlike the HTTP path, never writes the observation into the reactor context itself,
+            //so without this the traceId stays on the container thread and everything the message
+            //triggers is logged without it
+            .contextCapture();
     }
 }
