@@ -4,6 +4,7 @@ import cloud.cholewa.notification.discord.skippy.config.DiscordBotConfig;
 import cloud.cholewa.notification.model.NotificationLevel;
 import discord4j.common.util.Snowflake;
 import discord4j.core.DiscordClient;
+import discord4j.discordjson.json.AllowedMentionsData;
 import discord4j.discordjson.json.EmbedData;
 import discord4j.discordjson.json.MessageCreateRequest;
 import discord4j.rest.http.client.ClientException;
@@ -12,6 +13,8 @@ import org.springframework.stereotype.Service;
 import reactor.core.Exceptions;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
+
 @Slf4j
 @Service
 public class DiscordBotService {
@@ -19,6 +22,7 @@ public class DiscordBotService {
     //Discord refuses a message whose content is longer
     static final int MAX_CONTENT_LENGTH = 2000;
     private static final String CUT_MARKER = "…";
+    static final String EMPTY_MESSAGE = "(empty message)";
 
     private final DiscordClient skippy;
     private final Snowflake alertsChannelId;
@@ -52,6 +56,9 @@ public class DiscordBotService {
     private MessageCreateRequest toRequest(final NotificationLevel level, final String message) {
         return MessageCreateRequest.builder()
             .content(fitContent(message))
+            //as content the text is read for mentions, which an embed never was: a notification
+            //that quotes "@everyone" must not ping the whole server
+            .allowedMentions(AllowedMentionsData.builder().parse(List.of()).build())
             .addEmbed(EmbedData.builder()
                 .title(level.name())
                 .color(level.getColor())
@@ -62,6 +69,11 @@ public class DiscordBotService {
     //Discord answers a longer content with 400, and a 400 is not retried. Cut by code points:
     //half of an emoji at the end would be refused just the same
     private String fitContent(final String message) {
+        //without a text the message would be the badge alone - the embed-only message this layout
+        //exists to avoid
+        if (message.isBlank()) {
+            return EMPTY_MESSAGE;
+        }
         if (message.length() <= MAX_CONTENT_LENGTH) {
             return message;
         }

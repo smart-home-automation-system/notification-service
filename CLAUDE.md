@@ -41,7 +41,9 @@ review.
   permission Discord refuses it as empty. The
   level is read from the `level` message header; a missing or unknown one falls back to the
   queue's own — alert → `ERROR`, info → `INFO` — because a notification with the wrong color
-  is worth more than one not delivered. The content is cut at 2000 characters, by code points:
+  is worth more than one not delivered. Because the text is content, the request allows no
+  mentions (an echoed `@everyone` must not ping the server) and a blank text is replaced by a
+  placeholder. The content is cut at 2000 characters, by code points:
   Discord answers a longer one with 400, and a 400 is not retried.
 - **The bot never opens a gateway session.** `DiscordBotService` uses the REST side of
   `DiscordClient` only. Until HAS-94 it called `skippy.login()` for every message and never

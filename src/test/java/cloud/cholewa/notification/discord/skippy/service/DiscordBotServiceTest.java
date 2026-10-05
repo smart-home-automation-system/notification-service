@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
@@ -71,6 +72,29 @@ class DiscordBotServiceTest {
         assertThat(badge.color().get()).isEqualTo(0xE74C3C);
         //the text is not repeated inside the badge
         assertThat(badge.description().isAbsent()).isTrue();
+    }
+
+    //the text is message content now, and Discord resolves mentions in content
+    @Test
+    void should_not_let_the_text_mention_anyone() {
+        discordAccepts();
+
+        discordBotService.sendMessage(NotificationLevel.ERROR, "upstream said: @everyone <@123>")
+            .as(StepVerifier::create)
+            .verifyComplete();
+
+        assertThat(sentRequest().allowedMentions().get().parse().get()).isEmpty();
+    }
+
+    //a blank text would leave the badge alone: no preview, and refused without Embed Links
+    @ParameterizedTest
+    @ValueSource(strings = {"", "   ", "\n"})
+    void should_send_a_placeholder_for_blank_text(final String blank) {
+        discordAccepts();
+
+        discordBotService.sendMessage(NotificationLevel.INFO, blank).as(StepVerifier::create).verifyComplete();
+
+        assertThat(sentRequest().content().get()).isEqualTo(DiscordBotService.EMPTY_MESSAGE);
     }
 
     @ParameterizedTest
