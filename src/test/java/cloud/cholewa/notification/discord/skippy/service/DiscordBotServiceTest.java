@@ -1,21 +1,29 @@
 package cloud.cholewa.notification.discord.skippy.service;
 
 import cloud.cholewa.notification.discord.skippy.config.DiscordBotConfig;
+import cloud.cholewa.notification.model.NotificationLevel;
 import discord4j.common.util.Snowflake;
 import discord4j.core.DiscordClient;
+import discord4j.discordjson.json.EmbedData;
 import discord4j.discordjson.json.MessageData;
 import discord4j.rest.entity.RestChannel;
 import discord4j.rest.http.client.ClientException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.Exceptions;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -33,6 +41,9 @@ class DiscordBotServiceTest {
     @Mock
     private RestChannel restChannel;
 
+    @Captor
+    private ArgumentCaptor<EmbedData> embedCaptor;
+
     private DiscordBotService discordBotService;
 
     @BeforeEach
@@ -43,13 +54,45 @@ class DiscordBotServiceTest {
     @Test
     void should_send_message_to_the_configured_channel() {
         when(skippy.getChannelById(Snowflake.of(CHANNEL_ID))).thenReturn(restChannel);
-        when(restChannel.createMessage(MESSAGE)).thenReturn(Mono.just(mock(MessageData.class)));
+        when(restChannel.createMessage(any(EmbedData.class))).thenReturn(Mono.just(mock(MessageData.class)));
 
-        discordBotService.sendMessage(MESSAGE)
+        discordBotService.sendMessage(NotificationLevel.ERROR, MESSAGE)
             .as(StepVerifier::create)
             .verifyComplete();
 
-        verify(restChannel).createMessage(MESSAGE);
+        verify(restChannel).createMessage(embedCaptor.capture());
+
+        final EmbedData embed = embedCaptor.getValue();
+        assertThat(embed.title().get()).isEqualTo("ERROR");
+        assertThat(embed.description().get()).isEqualTo(MESSAGE);
+        assertThat(embed.color().get()).isEqualTo(0xE74C3C);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"ERROR, 15158332", "WARN, 15844367", "INFO, 3066993"})
+    void should_color_the_embed_by_level(final NotificationLevel level, final int color) {
+        when(skippy.getChannelById(Snowflake.of(CHANNEL_ID))).thenReturn(restChannel);
+        when(restChannel.createMessage(any(EmbedData.class))).thenReturn(Mono.just(mock(MessageData.class)));
+
+        discordBotService.sendMessage(level, MESSAGE).as(StepVerifier::create).verifyComplete();
+
+        verify(restChannel).createMessage(embedCaptor.capture());
+        assertThat(embedCaptor.getValue().title().get()).isEqualTo(level.name());
+        assertThat(embedCaptor.getValue().color().get()).isEqualTo(color);
+    }
+
+    //Discord answers 400 for a longer description, and a 400 is not retried
+    @Test
+    void should_cut_message_longer_than_discord_accepts() {
+        when(skippy.getChannelById(Snowflake.of(CHANNEL_ID))).thenReturn(restChannel);
+        when(restChannel.createMessage(any(EmbedData.class))).thenReturn(Mono.just(mock(MessageData.class)));
+
+        discordBotService.sendMessage(NotificationLevel.INFO, "x".repeat(5000))
+            .as(StepVerifier::create)
+            .verifyComplete();
+
+        verify(restChannel).createMessage(embedCaptor.capture());
+        assertThat(embedCaptor.getValue().description().get()).hasSize(DiscordBotService.MAX_DESCRIPTION_LENGTH);
     }
 
     //listing them makes discord4j decode every channel of the server, and one it cannot decode
@@ -57,9 +100,9 @@ class DiscordBotServiceTest {
     @Test
     void should_neither_list_guilds_nor_open_a_gateway_session() {
         when(skippy.getChannelById(Snowflake.of(CHANNEL_ID))).thenReturn(restChannel);
-        when(restChannel.createMessage(MESSAGE)).thenReturn(Mono.just(mock(MessageData.class)));
+        when(restChannel.createMessage(any(EmbedData.class))).thenReturn(Mono.just(mock(MessageData.class)));
 
-        discordBotService.sendMessage(MESSAGE)
+        discordBotService.sendMessage(NotificationLevel.ERROR, MESSAGE)
             .as(StepVerifier::create)
             .verifyComplete();
 
@@ -72,9 +115,9 @@ class DiscordBotServiceTest {
         final ClientException forbidden = mock(ClientException.class);
 
         when(skippy.getChannelById(Snowflake.of(CHANNEL_ID))).thenReturn(restChannel);
-        when(restChannel.createMessage(MESSAGE)).thenReturn(Mono.error(forbidden));
+        when(restChannel.createMessage(any(EmbedData.class))).thenReturn(Mono.error(forbidden));
 
-        discordBotService.sendMessage(MESSAGE)
+        discordBotService.sendMessage(NotificationLevel.ERROR, MESSAGE)
             .as(StepVerifier::create)
             .verifyErrorMatches(forbidden::equals);
     }
@@ -85,10 +128,10 @@ class DiscordBotServiceTest {
         final ClientException unavailable = mock(ClientException.class);
 
         when(skippy.getChannelById(Snowflake.of(CHANNEL_ID))).thenReturn(restChannel);
-        when(restChannel.createMessage(MESSAGE))
+        when(restChannel.createMessage(any(EmbedData.class)))
             .thenReturn(Mono.error(Exceptions.retryExhausted("Retries exhausted: 10/10", unavailable)));
 
-        discordBotService.sendMessage(MESSAGE).as(StepVerifier::create).verifyErrorMatches(unavailable::equals);
+        discordBotService.sendMessage(NotificationLevel.ERROR, MESSAGE).as(StepVerifier::create).verifyErrorMatches(unavailable::equals);
     }
 
     @Test

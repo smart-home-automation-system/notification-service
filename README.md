@@ -32,7 +32,12 @@ notifications through a Discord bot (`discord4j`), triggered two ways: by consum
 and info messages from RabbitMQ, and through a direct HTTP endpoint. Reactive throughout
 (Spring WebFlux / Reactor).
 
-Every message is posted on the Discord text channel `alerts`, over the Discord REST API —
+Every message is posted on the Discord text channel `alerts` as an **embed**: the level
+(`ERROR`, `WARN`, `INFO`) is its title, the text its description, and the bar on the left is
+red, yellow or green by the level. The level comes from the `level` message header
+(`error` / `warn` / `info`, any case); without it, or with an unknown value, a message from the
+alert queue is an `ERROR` and one from the info queue an `INFO`. A text longer than 4096
+characters, the limit of an embed description, is cut. Posting goes over the Discord REST API —
 the bot does not keep a gateway session. The channel is named by its Discord id,
 `discord.bot.skippy.alerts-channel-id` (environment variable `discord_alerts_channel_id`; in
 Discord: developer mode, "Copy Channel ID"). It is mandatory and has no default — the service
@@ -47,7 +52,7 @@ Base path `/home/notification` (`spring.webflux.base-path`). The endpoint is not
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/home/notification/skippy?message=<text>` | Send `message` to the Discord `alerts` channel. Returns `200 OK`; the `message` query parameter is required (`400 Bad Request` when missing); `502 Bad Gateway` when Discord refuses the request (a wrong channel id included). |
+| `GET` | `/home/notification/skippy?message=<text>&level=<error\|warn\|info>` | Send `message` to the Discord `alerts` channel; `level` is optional and defaults to `info`. Returns `200 OK`; the `message` query parameter is required (`400 Bad Request` when missing); `502 Bad Gateway` when Discord refuses the request (a wrong channel id included). |
 
 # Messaging
 
@@ -57,8 +62,8 @@ infrastructure — this service only consumes.
 
 | Queue | Property | Payload | Handler |
 |---|---|---|---|
-| `notification.prod.alert` / `notification.dev.alert` | `rabbit.alert.queue` | `String` (plain text) | `RabbitAlertMessageConsumer#consumeAlertMessage` |
-| `notification.prod.info` / `notification.dev.info` | `rabbit.info.queue` | `String` (plain text) | `RabbitInfoMessageConsumer#consumeInfoMessage` |
+| `notification.prod.alert` / `notification.dev.alert` | `rabbit.alert.queue` | `String` (plain text), optional header `level` (default `error`) | `RabbitAlertMessageConsumer#consumeAlertMessage` |
+| `notification.prod.info` / `notification.dev.info` | `rabbit.info.queue` | `String` (plain text), optional header `level` (default `info`) | `RabbitInfoMessageConsumer#consumeInfoMessage` |
 
 The `dev` queues are used in the `local` profile. Publishers send `text/plain`; the only one
 today is `heating-service`, which reports temperature sensors that stopped reporting.

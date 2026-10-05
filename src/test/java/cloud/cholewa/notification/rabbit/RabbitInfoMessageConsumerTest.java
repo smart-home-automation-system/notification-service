@@ -4,6 +4,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import cloud.cholewa.notification.model.NotificationLevel;
 import cloud.cholewa.notification.service.NotificationMessageService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,13 +32,13 @@ class RabbitInfoMessageConsumerTest {
 
     @Test
     void should_call_notification_message_service_when_message_received() {
-        when(notificationMessageService.processMessage("dummy message")).thenReturn(Mono.empty());
+        when(notificationMessageService.processMessage(NotificationLevel.INFO, "dummy message")).thenReturn(Mono.empty());
 
-        sut.consumeInfoMessage("dummy message")
+        sut.consumeInfoMessage("dummy message", null)
             .as(StepVerifier::create)
             .verifyComplete();
 
-        verify(notificationMessageService).processMessage("dummy message");
+        verify(notificationMessageService).processMessage(NotificationLevel.INFO, "dummy message");
         verifyNoMoreInteractions(notificationMessageService);
     }
 
@@ -49,10 +50,10 @@ class RabbitInfoMessageConsumerTest {
         listAppender.start();
         logger.addAppender(listAppender);
 
-        when(notificationMessageService.processMessage("dummy message"))
+        when(notificationMessageService.processMessage(NotificationLevel.INFO, "dummy message"))
             .thenReturn(Mono.error(new RuntimeException("Error")));
 
-        sut.consumeInfoMessage("dummy message")
+        sut.consumeInfoMessage("dummy message", null)
             .as(StepVerifier::create)
             .verifyComplete();
 

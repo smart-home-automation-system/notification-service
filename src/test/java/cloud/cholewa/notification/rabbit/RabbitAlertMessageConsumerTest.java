@@ -4,6 +4,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import cloud.cholewa.notification.model.NotificationLevel;
 import cloud.cholewa.notification.service.NotificationMessageService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -33,13 +34,13 @@ class RabbitAlertMessageConsumerTest {
     @Test
     @DisplayName("should call notificationMessageService when message received")
     void should_call_alert_message_service_when_message_received() {
-        when(notificationMessageService.processMessage("dummy message")).thenReturn(Mono.empty());
+        when(notificationMessageService.processMessage(NotificationLevel.ERROR, "dummy message")).thenReturn(Mono.empty());
 
-        sut.consumeAlertMessage("dummy message")
+        sut.consumeAlertMessage("dummy message", null)
             .as(StepVerifier::create)
             .verifyComplete();
 
-        verify(notificationMessageService).processMessage("dummy message");
+        verify(notificationMessageService).processMessage(NotificationLevel.ERROR, "dummy message");
         verifyNoMoreInteractions(notificationMessageService);
     }
 
@@ -51,9 +52,9 @@ class RabbitAlertMessageConsumerTest {
         listAppender.start();
         logger.addAppender(listAppender);
 
-        when(notificationMessageService.processMessage("dummy message")).thenReturn(Mono.empty());
+        when(notificationMessageService.processMessage(NotificationLevel.ERROR, "dummy message")).thenReturn(Mono.empty());
 
-        sut.consumeAlertMessage("dummy message")
+        sut.consumeAlertMessage("dummy message", null)
             .as(StepVerifier::create)
             .verifyComplete();
 
@@ -76,10 +77,10 @@ class RabbitAlertMessageConsumerTest {
         listAppender.start();
         logger.addAppender(listAppender);
         
-        when(notificationMessageService.processMessage("dummy message"))
+        when(notificationMessageService.processMessage(NotificationLevel.ERROR, "dummy message"))
             .thenReturn(Mono.error(new RuntimeException("Error")));
         
-        sut.consumeAlertMessage("dummy message")
+        sut.consumeAlertMessage("dummy message", null)
             .as(StepVerifier::create)
             .verifyComplete();
 
@@ -97,17 +98,30 @@ class RabbitAlertMessageConsumerTest {
     }
 
     @Test
+    @DisplayName("should take the level from the header when the publisher names one")
+    void should_take_level_from_header() {
+        when(notificationMessageService.processMessage(NotificationLevel.WARN, "dummy message"))
+            .thenReturn(Mono.empty());
+
+        sut.consumeAlertMessage("dummy message", "warn")
+            .as(StepVerifier::create)
+            .verifyComplete();
+
+        verify(notificationMessageService).processMessage(NotificationLevel.WARN, "dummy message");
+    }
+
+    @Test
     @DisplayName("should return empty mono when error occurs")
     void should_return_empty_mono_when_error_occurs() {
-        when(notificationMessageService.processMessage("dummy message"))
+        when(notificationMessageService.processMessage(NotificationLevel.ERROR, "dummy message"))
             .thenReturn(Mono.error(new RuntimeException("Error")));
 
-        sut.consumeAlertMessage("dummy message")
+        sut.consumeAlertMessage("dummy message", null)
             .as(StepVerifier::create)
             .expectNextCount(0)
             .verifyComplete();
         
-        verify(notificationMessageService).processMessage("dummy message");
+        verify(notificationMessageService).processMessage(NotificationLevel.ERROR, "dummy message");
         verifyNoMoreInteractions(notificationMessageService);
     }
 }
