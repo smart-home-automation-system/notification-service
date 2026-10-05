@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 import reactor.core.Exceptions;
 import reactor.core.publisher.Mono;
 
+import java.util.concurrent.atomic.AtomicReference;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -24,7 +26,7 @@ public class DiscordBotService {
 
     //looked up once and kept: without it every message, and every retry of it, would list the
     //guilds and their channels again before posting
-    private volatile Snowflake alertsChannelId;
+    private final AtomicReference<Snowflake> alertsChannelId = new AtomicReference<>();
 
     //over the REST API only: skippy.login() opens a gateway session, which nothing here ever
     //closed - one more websocket for every message sent
@@ -32,7 +34,7 @@ public class DiscordBotService {
         return alertsChannel()
             .flatMap(channelId -> skippy.getChannelById(channelId).createMessage(message)
                 //the channel was deleted or re-created: forget it, the next attempt looks it up again
-                .doOnError(ClientException.isStatusCode(NOT_FOUND), throwable -> alertsChannelId = null))
+                .doOnError(ClientException.isStatusCode(NOT_FOUND), throwable -> alertsChannelId.set(null)))
             .doOnNext(sent -> log.info("Message sent to Discord channel: {}", ALERTS_CHANNEL))
             //discord4j retries a 5xx itself and, when that runs out, signals Reactor's "retries
             //exhausted" with the answer only as its cause; callers decide by the answer
@@ -45,7 +47,7 @@ public class DiscordBotService {
 
     private Mono<Snowflake> alertsChannel() {
         return Mono.defer(() -> {
-            final Snowflake known = alertsChannelId;
+            final Snowflake known = alertsChannelId.get();
 
             return known != null ? Mono.just(known) : findAlertsChannel();
         });
@@ -59,7 +61,7 @@ public class DiscordBotService {
             .filter(DiscordBotService::isAlertsChannel)
             .next()
             .map(channel -> Snowflake.of(channel.id()))
-            .doOnNext(channelId -> alertsChannelId = channelId)
+            .doOnNext(alertsChannelId::set)
             //no channel is a failure, not a success: the caller would otherwise report a
             //notification as delivered that nobody will ever read
             .switchIfEmpty(Mono.error(() ->
