@@ -32,12 +32,14 @@ notifications through a Discord bot (`discord4j`), triggered two ways: by consum
 and info messages from RabbitMQ, and through a direct HTTP endpoint. Reactive throughout
 (Spring WebFlux / Reactor).
 
-Every message is posted on the Discord text channel `alerts` as an **embed**: the level
-(`ERROR`, `WARN`, `INFO`) is its title, the text its description, and the bar on the left is
-red, yellow or green by the level. The level comes from the `level` message header
+Every message is posted on the Discord text channel `alerts` as plain text with a **badge**
+under it: a small embed whose title is the level (`ERROR`, `WARN`, `INFO`) and whose bar on
+the left is red, yellow or green. The text is kept out of the embed so that a push
+notification previews it, and so that the message still arrives when the bot may not post
+embeds (only the badge is lost then). The level comes from the `level` message header
 (`error` / `warn` / `info`, any case); without it, or with an unknown value, a message from the
-alert queue is an `ERROR` and one from the info queue an `INFO`. A text longer than 4096
-characters, the limit of an embed description, is cut. Posting goes over the Discord REST API —
+alert queue is an `ERROR` and one from the info queue an `INFO`. A text longer than 2000
+characters, the limit of a Discord message, is cut and marked with `…`. Posting goes over the Discord REST API —
 the bot does not keep a gateway session. The channel is named by its Discord id,
 `discord.bot.skippy.alerts-channel-id` (environment variable `discord_alerts_channel_id`; in
 Discord: developer mode, "Copy Channel ID"). It is mandatory and has no default — the service
