@@ -1,6 +1,7 @@
 package cloud.cholewa.notification.service;
 
 import cloud.cholewa.notification.discord.skippy.service.DiscordBotService;
+import cloud.cholewa.notification.model.NotificationLevel;
 import discord4j.rest.http.client.ClientException;
 import io.netty.channel.ChannelException;
 import lombok.RequiredArgsConstructor;
@@ -31,8 +32,8 @@ public class NotificationMessageService {
      * error is signalled only when the retries are used up: handing the message back to the
      * broker instead would redeliver it at once, in a loop, for as long as Discord stays down.
      */
-    public Mono<Void> processMessage(final String message) {
-        return discordBotService.sendMessage(message)
+    public Mono<Void> processMessage(final NotificationLevel level, final String message) {
+        return discordBotService.sendMessage(level, message)
             .retryWhen(Retry.backoff(DELIVERY_RETRY_ATTEMPTS, DELIVERY_RETRY_BACKOFF)
                 .filter(NotificationMessageService::isWorthRetrying)
                 .doBeforeRetry(signal -> log.warn(

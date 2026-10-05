@@ -2,6 +2,7 @@ package cloud.cholewa.notification.service;
 
 import cloud.cholewa.notification.discord.skippy.service.DiscordBotService;
 import cloud.cholewa.notification.infrastructure.error.NotificationException;
+import cloud.cholewa.notification.model.NotificationLevel;
 import discord4j.rest.http.client.ClientException;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.timeout.ReadTimeoutException;
@@ -40,23 +41,23 @@ class NotificationMessageServiceTest {
 
     @Test
     void should_deliver_message_to_discord() {
-        when(discordBotService.sendMessage(MESSAGE)).thenReturn(Mono.empty());
+        when(discordBotService.sendMessage(NotificationLevel.WARN, MESSAGE)).thenReturn(Mono.empty());
 
-        sut.processMessage(MESSAGE)
+        sut.processMessage(NotificationLevel.WARN, MESSAGE)
             .as(StepVerifier::create)
             .verifyComplete();
 
-        verify(discordBotService).sendMessage(MESSAGE);
+        verify(discordBotService).sendMessage(NotificationLevel.WARN, MESSAGE);
     }
 
     @Test
     void should_retry_delivery_until_it_succeeds() {
         final AtomicInteger attempts = new AtomicInteger();
 
-        when(discordBotService.sendMessage(MESSAGE)).thenReturn(Mono.defer(() ->
+        when(discordBotService.sendMessage(NotificationLevel.WARN, MESSAGE)).thenReturn(Mono.defer(() ->
             attempts.incrementAndGet() < 3 ? Mono.error(new IOException("connection reset")) : Mono.empty()));
 
-        StepVerifier.withVirtualTime(() -> sut.processMessage(MESSAGE))
+        StepVerifier.withVirtualTime(() -> sut.processMessage(NotificationLevel.WARN, MESSAGE))
             .thenAwait(Duration.ofMinutes(10))
             .verifyComplete();
 
@@ -68,12 +69,12 @@ class NotificationMessageServiceTest {
     void should_not_retry_notification_exception() {
         final AtomicInteger attempts = new AtomicInteger();
 
-        when(discordBotService.sendMessage(MESSAGE)).thenReturn(Mono.defer(() -> {
+        when(discordBotService.sendMessage(NotificationLevel.WARN, MESSAGE)).thenReturn(Mono.defer(() -> {
             attempts.incrementAndGet();
             return Mono.error(new NotificationException("not deliverable"));
         }));
 
-        StepVerifier.withVirtualTime(() -> sut.processMessage(MESSAGE))
+        StepVerifier.withVirtualTime(() -> sut.processMessage(NotificationLevel.WARN, MESSAGE))
             .thenAwait(Duration.ofMinutes(10))
             .verifyError(NotificationException.class);
 
@@ -87,12 +88,12 @@ class NotificationMessageServiceTest {
         final ClientException refused = mock(ClientException.class);
         when(refused.getStatus()).thenReturn(HttpResponseStatus.valueOf(status));
 
-        when(discordBotService.sendMessage(MESSAGE)).thenReturn(Mono.defer(() -> {
+        when(discordBotService.sendMessage(NotificationLevel.WARN, MESSAGE)).thenReturn(Mono.defer(() -> {
             attempts.incrementAndGet();
             return Mono.error(refused);
         }));
 
-        StepVerifier.withVirtualTime(() -> sut.processMessage(MESSAGE))
+        StepVerifier.withVirtualTime(() -> sut.processMessage(NotificationLevel.WARN, MESSAGE))
             .thenAwait(Duration.ofMinutes(10))
             .verifyErrorMatches(refused::equals);
 
@@ -103,11 +104,11 @@ class NotificationMessageServiceTest {
     void should_retry_network_failure_wrapped_by_the_client() {
         final AtomicInteger attempts = new AtomicInteger();
 
-        when(discordBotService.sendMessage(MESSAGE)).thenReturn(Mono.defer(() -> attempts.incrementAndGet() < 2
+        when(discordBotService.sendMessage(NotificationLevel.WARN, MESSAGE)).thenReturn(Mono.defer(() -> attempts.incrementAndGet() < 2
             ? Mono.error(new IllegalStateException("request failed", ReadTimeoutException.INSTANCE))
             : Mono.empty()));
 
-        StepVerifier.withVirtualTime(() -> sut.processMessage(MESSAGE))
+        StepVerifier.withVirtualTime(() -> sut.processMessage(NotificationLevel.WARN, MESSAGE))
             .thenAwait(Duration.ofMinutes(10))
             .verifyComplete();
 
@@ -121,11 +122,11 @@ class NotificationMessageServiceTest {
         final ClientException unavailable = mock(ClientException.class);
         when(unavailable.getStatus()).thenReturn(HttpResponseStatus.SERVICE_UNAVAILABLE);
 
-        when(discordBotService.sendMessage(MESSAGE)).thenReturn(Mono.defer(() -> attempts.incrementAndGet() < 2
+        when(discordBotService.sendMessage(NotificationLevel.WARN, MESSAGE)).thenReturn(Mono.defer(() -> attempts.incrementAndGet() < 2
             ? Mono.error(Exceptions.retryExhausted("Retries exhausted: 10/10", unavailable))
             : Mono.empty()));
 
-        StepVerifier.withVirtualTime(() -> sut.processMessage(MESSAGE))
+        StepVerifier.withVirtualTime(() -> sut.processMessage(NotificationLevel.WARN, MESSAGE))
             .thenAwait(Duration.ofMinutes(10))
             .verifyComplete();
 
@@ -136,11 +137,11 @@ class NotificationMessageServiceTest {
     void should_retry_connection_closed_before_send() {
         final AtomicInteger attempts = new AtomicInteger();
 
-        when(discordBotService.sendMessage(MESSAGE)).thenReturn(Mono.defer(() -> attempts.incrementAndGet() < 2
+        when(discordBotService.sendMessage(NotificationLevel.WARN, MESSAGE)).thenReturn(Mono.defer(() -> attempts.incrementAndGet() < 2
             ? Mono.error(AbortedException.beforeSend())
             : Mono.empty()));
 
-        StepVerifier.withVirtualTime(() -> sut.processMessage(MESSAGE))
+        StepVerifier.withVirtualTime(() -> sut.processMessage(NotificationLevel.WARN, MESSAGE))
             .thenAwait(Duration.ofMinutes(10))
             .verifyComplete();
 
@@ -152,12 +153,12 @@ class NotificationMessageServiceTest {
     void should_not_retry_failure_that_is_neither_discord_nor_the_network() {
         final AtomicInteger attempts = new AtomicInteger();
 
-        when(discordBotService.sendMessage(MESSAGE)).thenReturn(Mono.defer(() -> {
+        when(discordBotService.sendMessage(NotificationLevel.WARN, MESSAGE)).thenReturn(Mono.defer(() -> {
             attempts.incrementAndGet();
             return Mono.error(new NullPointerException("channel"));
         }));
 
-        StepVerifier.withVirtualTime(() -> sut.processMessage(MESSAGE))
+        StepVerifier.withVirtualTime(() -> sut.processMessage(NotificationLevel.WARN, MESSAGE))
             .thenAwait(Duration.ofMinutes(10))
             .verifyError(NullPointerException.class);
 
@@ -168,10 +169,10 @@ class NotificationMessageServiceTest {
     void should_signal_the_last_failure_when_retries_are_used_up() {
         final AtomicInteger attempts = new AtomicInteger();
 
-        when(discordBotService.sendMessage(MESSAGE)).thenReturn(Mono.defer(() ->
+        when(discordBotService.sendMessage(NotificationLevel.WARN, MESSAGE)).thenReturn(Mono.defer(() ->
             Mono.error(new IOException("connection reset " + attempts.incrementAndGet()))));
 
-        StepVerifier.withVirtualTime(() -> sut.processMessage(MESSAGE))
+        StepVerifier.withVirtualTime(() -> sut.processMessage(NotificationLevel.WARN, MESSAGE))
             .thenAwait(Duration.ofMinutes(10))
             .verifyErrorMatches(throwable -> throwable instanceof IOException
                 && throwable.getMessage().equals("connection reset 5"));

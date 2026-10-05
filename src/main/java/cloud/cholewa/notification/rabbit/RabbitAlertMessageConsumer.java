@@ -1,9 +1,12 @@
 package cloud.cholewa.notification.rabbit;
 
+import cloud.cholewa.notification.model.NotificationLevel;
 import cloud.cholewa.notification.service.NotificationMessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.messaging.handler.annotation.Header;
+import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
@@ -12,11 +15,18 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class RabbitAlertMessageConsumer {
 
+    static final String LEVEL_HEADER = "level";
+
     private final NotificationMessageService notificationMessageService;
 
+    //an alert is an ERROR unless its publisher says otherwise in the level header
     @RabbitListener(queues = "${rabbit.alert.queue}")
-    Mono<Void> consumeAlertMessage(final String message) {
-        return notificationMessageService.processMessage(message)
+    Mono<Void> consumeAlertMessage(
+        @Payload final String message,
+        @Header(name = LEVEL_HEADER, required = false) final String level
+    ) {
+        return notificationMessageService
+            .processMessage(NotificationLevel.of(level, NotificationLevel.ERROR), message)
             .doOnSubscribe(subscription -> log.info("Received alert message: {}", message))
             //the delivery was already retried; an error signal here would make the container hand
             //the message back to the broker and receive it again at once. The text goes into the
