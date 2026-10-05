@@ -67,6 +67,9 @@ discord:
   bot:
     skippy:
       token: ${discord_bot_skippy_token:dummy}
+      # the Discord id of the channel every notification goes to; not a secret, and no default
+      # on purpose: a made-up one would start the service and fail every delivery
+      alerts-channel-id: ${discord_alerts_channel_id}
 
 ---
 
@@ -106,6 +109,11 @@ spring:
       on-profile: test
   autoconfigure:
     exclude: org.springframework.boot.amqp.autoconfigure.RabbitAutoConfiguration
+
+discord:
+  bot:
+    skippy:
+      alerts-channel-id: 1
 
 logbook:
   format:

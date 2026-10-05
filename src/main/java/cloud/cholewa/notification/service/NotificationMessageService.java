@@ -22,7 +22,6 @@ public class NotificationMessageService {
     static final long DELIVERY_RETRY_ATTEMPTS = 4;
     static final Duration DELIVERY_RETRY_BACKOFF = Duration.ofSeconds(5);
 
-    private static final int NOT_FOUND = 404;
     private static final int SERVER_ERROR = 500;
 
     private final DiscordBotService discordBotService;
@@ -46,19 +45,16 @@ public class NotificationMessageService {
                 .onRetryExhaustedThrow((spec, signal) -> signal.failure()));
     }
 
-    //only what another attempt can change: Discord failing on its side, or the network. A missing
-    //channel, a rejected token, a message Discord refuses or a fault in this service will fail
-    //the same way every time. The one 4xx worth another attempt is 404: the channel is looked up
-    //again then. Rate limits (429) never get here, discord4j waits them out itself
+    //only what another attempt can change: Discord failing on its side, or the network. A wrong
+    //channel id, a rejected token, a message Discord refuses or a fault in this service will fail
+    //the same way every time. Rate limits (429) never get here, discord4j waits them out itself
     private static boolean isWorthRetrying(final Throwable throwable) {
         //down the causes: the client wraps what it reports - a 5xx arrives inside the
         //"retries exhausted" of discord4j's own attempts, a network failure inside whatever
         //noticed it
         for (Throwable cause = throwable; cause != null; cause = cause.getCause()) {
             if (cause instanceof ClientException clientException) {
-                final int status = clientException.getStatus().code();
-
-                return status >= SERVER_ERROR || status == NOT_FOUND;
+                return clientException.getStatus().code() >= SERVER_ERROR;
             }
             if (cause instanceof IOException
                 || cause instanceof TimeoutException
