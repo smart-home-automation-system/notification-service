@@ -33,9 +33,12 @@ and info messages from RabbitMQ, and through a direct HTTP endpoint. Reactive th
 (Spring WebFlux / Reactor).
 
 Every message is posted on the Discord text channel `alerts`, over the Discord REST API —
-the bot does not keep a gateway session. The channel is looked up once and remembered (and
-looked up again when Discord answers 404 for it); the first text channel named `alerts` is
-used. A server without that channel is a delivery failure, not a silent success.
+the bot does not keep a gateway session. The channel is named by its Discord id,
+`discord.bot.skippy.alerts-channel-id` (environment variable `discord_alerts_channel_id`; in
+Discord: developer mode, "Copy Channel ID"). It is mandatory and has no default — the service
+does not start without it. The channel is deliberately not looked up by name: listing the
+channels makes discord4j decode every channel of the server, and one it cannot decode fails
+the delivery (0.3.0 delivered nothing for that reason).
 
 # API
 
@@ -44,7 +47,7 @@ Base path `/home/notification` (`spring.webflux.base-path`). The endpoint is not
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/home/notification/skippy?message=<text>` | Send `message` to the Discord `alerts` channel. Returns `200 OK`; the `message` query parameter is required (`400 Bad Request` when missing); `502 Bad Gateway` when there is no `alerts` channel or Discord refuses the request. |
+| `GET` | `/home/notification/skippy?message=<text>` | Send `message` to the Discord `alerts` channel. Returns `200 OK`; the `message` query parameter is required (`400 Bad Request` when missing); `502 Bad Gateway` when Discord refuses the request (a wrong channel id included). |
 
 # Messaging
 
@@ -63,8 +66,8 @@ today is `heating-service`, which reports temperature sensors that stopped repor
 Both listeners return `Mono<Void>` and delegate to
 `NotificationMessageService#processMessage`, which posts the text on Discord and retries a
 failed delivery four times with a backoff starting at 5 s. Only what another attempt can change is retried: a
-5xx or 404 from Discord and network failures. No `alerts` channel, a rejected token or a
-message Discord refuses is not. When the retries are used up, or there are none, the
+5xx from Discord and network failures. A wrong channel id, a rejected token or a message
+Discord refuses is not. When the retries are used up, or there are none, the
 listener logs the message text at ERROR and acknowledges it: handing it back to the broker
 would redeliver it immediately, in a loop, for as long as Discord is unreachable. The queues
 keep a message for one hour, so a notification published while the service is down for longer

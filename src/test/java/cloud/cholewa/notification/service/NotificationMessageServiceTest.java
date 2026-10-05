@@ -65,12 +65,12 @@ class NotificationMessageServiceTest {
 
     //the same answer every time: retrying only keeps the message unacknowledged for longer
     @Test
-    void should_not_retry_when_the_channel_does_not_exist() {
+    void should_not_retry_notification_exception() {
         final AtomicInteger attempts = new AtomicInteger();
 
         when(discordBotService.sendMessage(MESSAGE)).thenReturn(Mono.defer(() -> {
             attempts.incrementAndGet();
-            return Mono.error(new NotificationException("Discord text channel not found: alerts"));
+            return Mono.error(new NotificationException("not deliverable"));
         }));
 
         StepVerifier.withVirtualTime(() -> sut.processMessage(MESSAGE))
@@ -81,7 +81,7 @@ class NotificationMessageServiceTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"400, 1", "401, 1", "403, 1", "404, 5", "500, 5", "503, 5"})
+    @CsvSource({"400, 1", "401, 1", "403, 1", "404, 1", "500, 5", "503, 5"})
     void should_retry_only_discord_answers_that_can_change(final int status, final int expectedAttempts) {
         final AtomicInteger attempts = new AtomicInteger();
         final ClientException refused = mock(ClientException.class);

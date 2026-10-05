@@ -4,6 +4,7 @@ import cloud.cholewa.notification.discord.skippy.service.DiscordBotService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import reactor.core.publisher.Mono;
@@ -13,6 +14,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+//without it a run from the IDE has no test profile, and discord.bot.skippy.alerts-channel-id has no
+//value outside that document
+@ActiveProfiles("test")
 @WebFluxTest(DiscordBotController.class)
 class DiscordBotControllerTest {
 

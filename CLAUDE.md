@@ -19,8 +19,8 @@ review.
   are declared by the broker definitions in `deployment-tools`, not by this service.
 - Publishers: `heating-service` (silent temperature sensors, HAS-94). The payload is plain
   text — the listeners take a `String` and there is no JSON converter.
-- Calls: the Discord REST API. Every message goes to the text channel `alerts`, alerts and
-  infos alike.
+- Calls: the Discord REST API. Every message goes to one text channel (`alerts`), alerts and
+  infos alike; the channel is configured by id.
 - `GET /home/notification/skippy?message=` sends a text by hand. It is deliberately **not**
   routed by `api-gateway-service`.
 - Uses libraries: `cholewa-commons`. No database, no `smart-home-sdk`.
@@ -29,23 +29,24 @@ review.
 
 - Build + tests: `mvn verify`
 - Local run: `home,local` Spring profiles, port `6003` (Actuator `8003`); in-cluster port
-  `6200`, Actuator `8200`. Needs a RabbitMQ broker and the bot token
-  (`discord_bot_skippy_token`).
+  `6200`, Actuator `8200`. Needs a RabbitMQ broker, the bot token
+  (`discord_bot_skippy_token`) and the channel id (`discord_alerts_channel_id`, mandatory).
 
 ## Specifics
 
 - **The bot never opens a gateway session.** `DiscordBotService` uses the REST side of
   `DiscordClient` only. Until HAS-94 it called `skippy.login()` for every message and never
   logged out, so every message left one more websocket behind.
-- **A missing `alerts` channel is an error**, not an empty success — otherwise a notification
-  nobody will ever read is reported as delivered. `GET /skippy` answers it with 502: the
-  caller did nothing wrong. A discord4j `ClientException` gets 502 as well, with the status
-  only — its message carries the request and Discord's whole reply.
-- **The channel id is looked up once and kept** in `DiscordBotService`, and forgotten when
-  Discord answers 404 for it. Only the first matching channel gets the message: posting to
-  every match could not be retried without repeating the posts that had already succeeded.
+- **The channel is configured by id, never looked up by name** (`discord.bot.skippy.alerts-channel-id`).
+  0.3.0 listed the server's channels to find `alerts`, and delivered nothing: discord4j 3.3.2
+  could not decode one of the channels (`Optional cannot be cast to Id` in `ChannelData`),
+  which failed the whole listing — in production, on the first alert, because no test talks
+  to Discord. Posting to a known id decodes only the reply to the post. Do not bring the
+  lookup back, and treat any new discord4j call that returns server data the same way.
+- **A discord4j `ClientException` is answered with 502 by `GET /skippy`**, with the status only
+  — its message carries the request and Discord's whole reply.
 - **Delivery is retried in the service, not by the broker** (`NotificationMessageService`:
-  four retries, backoff from 5 s; only a 5xx or 404 from Discord and network failures are
+  four retries, backoff from 5 s; only a 5xx from Discord and network failures are
   retried, everything else would fail the same way again — the check walks the causes,
   because discord4j reports a 5xx wrapped in the "retries exhausted" of its own attempts). The listeners then swallow the error on purpose: a
   listener returning `Mono` that signals an error makes the container hand the message back,
