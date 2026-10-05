@@ -39,13 +39,14 @@ review.
   logged out, so every message left one more websocket behind.
 - **A missing `alerts` channel is an error**, not an empty success — otherwise a notification
   nobody will ever read is reported as delivered. `GET /skippy` answers it with 502: the
-  caller did nothing wrong.
+  caller did nothing wrong. A discord4j `ClientException` gets 502 as well, with the status
+  only — its message carries the request and Discord's whole reply.
 - **The channel id is looked up once and kept** in `DiscordBotService`, and forgotten when
   Discord answers 404 for it. Only the first matching channel gets the message: posting to
   every match could not be retried without repeating the posts that had already succeeded.
 - **Delivery is retried in the service, not by the broker** (`NotificationMessageService`:
-  four retries, backoff from 5 s; failures that cannot change — `NotificationException`, a 4xx
-  other than 404 — are not retried). The listeners then swallow the error on purpose: a
+  four retries, backoff from 5 s; only a 5xx or 404 from Discord and network failures are
+  retried, everything else would fail the same way again). The listeners then swallow the error on purpose: a
   listener returning `Mono` that signals an error makes the container hand the message back,
   and the broker redelivers it at once — a tight loop for as long as Discord is down. When
   the retries are used up the message text is logged at ERROR; from then on the log is the

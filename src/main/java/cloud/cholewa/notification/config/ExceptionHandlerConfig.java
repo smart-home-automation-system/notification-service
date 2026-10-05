@@ -2,7 +2,9 @@ package cloud.cholewa.notification.config;
 
 import cloud.cholewa.commons.error.GlobalErrorExceptionHandler;
 import cloud.cholewa.notification.infrastructure.error.NotificationException;
+import cloud.cholewa.notification.infrastructure.error.processor.DiscordClientExceptionProcessor;
 import cloud.cholewa.notification.infrastructure.error.processor.NotificationExceptionProcessor;
+import discord4j.rest.http.client.ClientException;
 import org.springframework.boot.autoconfigure.web.WebProperties;
 import org.springframework.boot.webflux.error.ErrorAttributes;
 import org.springframework.context.ApplicationContext;
@@ -33,7 +35,8 @@ public class ExceptionHandlerConfig {
 
         globalErrorExceptionHandler.withCustomErrorProcessor(
             Map.ofEntries(
-                Map.entry(NotificationException.class, new NotificationExceptionProcessor())
+                Map.entry(NotificationException.class, new NotificationExceptionProcessor()),
+                Map.entry(ClientException.class, new DiscordClientExceptionProcessor())
             )
         );
 

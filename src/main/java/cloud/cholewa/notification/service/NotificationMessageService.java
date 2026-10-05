@@ -1,15 +1,17 @@
 package cloud.cholewa.notification.service;
 
 import cloud.cholewa.notification.discord.skippy.service.DiscordBotService;
-import cloud.cholewa.notification.infrastructure.error.NotificationException;
 import discord4j.rest.http.client.ClientException;
+import io.netty.channel.ChannelException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
 
+import java.io.IOException;
 import java.time.Duration;
+import java.util.concurrent.TimeoutException;
 
 @Slf4j
 @Service
@@ -43,18 +45,25 @@ public class NotificationMessageService {
                 .onRetryExhaustedThrow((spec, signal) -> signal.failure()));
     }
 
-    //a missing channel, a rejected token or a message Discord refuses will fail the same way
-    //every time. The one 4xx worth another attempt is 404: the channel is looked up again then.
-    //Rate limits (429) never get here, discord4j waits them out itself
+    //only what another attempt can change: Discord failing on its side, or the network. A missing
+    //channel, a rejected token, a message Discord refuses or a fault in this service will fail
+    //the same way every time. The one 4xx worth another attempt is 404: the channel is looked up
+    //again then. Rate limits (429) never get here, discord4j waits them out itself
     private static boolean isWorthRetrying(final Throwable throwable) {
-        if (throwable instanceof NotificationException) {
-            return false;
-        }
         if (throwable instanceof ClientException clientException) {
             final int status = clientException.getStatus().code();
 
             return status >= SERVER_ERROR || status == NOT_FOUND;
         }
-        return true;
+        //the network failure is often the cause, wrapped by the client that reports it
+        for (Throwable cause = throwable; cause != null; cause = cause.getCause()) {
+            if (cause instanceof IOException
+                || cause instanceof TimeoutException
+                //netty's read and write timeouts are neither of the two above
+                || cause instanceof ChannelException) {
+                return true;
+            }
+        }
+        return false;
     }
 }

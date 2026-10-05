@@ -44,7 +44,7 @@ Base path `/home/notification` (`spring.webflux.base-path`). The endpoint is not
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/home/notification/skippy?message=<text>` | Send `message` to the Discord `alerts` channel. Returns `200 OK`; the `message` query parameter is required (`400 Bad Request` when missing); `502 Bad Gateway` when there is no `alerts` channel. |
+| `GET` | `/home/notification/skippy?message=<text>` | Send `message` to the Discord `alerts` channel. Returns `200 OK`; the `message` query parameter is required (`400 Bad Request` when missing); `502 Bad Gateway` when there is no `alerts` channel or Discord refuses the request. |
 
 # Messaging
 
@@ -62,9 +62,9 @@ today is `heating-service`, which reports temperature sensors that stopped repor
 
 Both listeners return `Mono<Void>` and delegate to
 `NotificationMessageService#processMessage`, which posts the text on Discord and retries a
-failed delivery four times with a backoff starting at 5 s. A failure that cannot change — no
-`alerts` channel, a rejected token, a message Discord refuses (4xx other than 404) — is not
-retried. When the retries are used up, or there are none, the
+failed delivery four times with a backoff starting at 5 s. Only what another attempt can change is retried: a
+5xx or 404 from Discord and network failures. No `alerts` channel, a rejected token or a
+message Discord refuses is not. When the retries are used up, or there are none, the
 listener logs the message text at ERROR and acknowledges it: handing it back to the broker
 would redeliver it immediately, in a loop, for as long as Discord is unreachable. The queues
 keep a message for one hour, so a notification published while the service is down for longer

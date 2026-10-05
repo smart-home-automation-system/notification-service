@@ -4,6 +4,7 @@ import cloud.cholewa.notification.discord.skippy.service.DiscordBotService;
 import cloud.cholewa.notification.infrastructure.error.NotificationException;
 import discord4j.rest.http.client.ClientException;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.timeout.ReadTimeoutException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -14,6 +15,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.io.IOException;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -50,7 +52,7 @@ class NotificationMessageServiceTest {
         final AtomicInteger attempts = new AtomicInteger();
 
         when(discordBotService.sendMessage(MESSAGE)).thenReturn(Mono.defer(() ->
-            attempts.incrementAndGet() < 3 ? Mono.error(new IllegalStateException("Discord down")) : Mono.empty()));
+            attempts.incrementAndGet() < 3 ? Mono.error(new IOException("connection reset")) : Mono.empty()));
 
         StepVerifier.withVirtualTime(() -> sut.processMessage(MESSAGE))
             .thenAwait(Duration.ofMinutes(10))
@@ -96,16 +98,48 @@ class NotificationMessageServiceTest {
     }
 
     @Test
+    void should_retry_network_failure_wrapped_by_the_client() {
+        final AtomicInteger attempts = new AtomicInteger();
+
+        when(discordBotService.sendMessage(MESSAGE)).thenReturn(Mono.defer(() -> attempts.incrementAndGet() < 2
+            ? Mono.error(new IllegalStateException("request failed", ReadTimeoutException.INSTANCE))
+            : Mono.empty()));
+
+        StepVerifier.withVirtualTime(() -> sut.processMessage(MESSAGE))
+            .thenAwait(Duration.ofMinutes(10))
+            .verifyComplete();
+
+        assertThat(attempts).hasValue(2);
+    }
+
+    //a fault in this service: the next attempt would meet it again
+    @Test
+    void should_not_retry_failure_that_is_neither_discord_nor_the_network() {
+        final AtomicInteger attempts = new AtomicInteger();
+
+        when(discordBotService.sendMessage(MESSAGE)).thenReturn(Mono.defer(() -> {
+            attempts.incrementAndGet();
+            return Mono.error(new NullPointerException("channel"));
+        }));
+
+        StepVerifier.withVirtualTime(() -> sut.processMessage(MESSAGE))
+            .thenAwait(Duration.ofMinutes(10))
+            .verifyError(NullPointerException.class);
+
+        assertThat(attempts).hasValue(1);
+    }
+
+    @Test
     void should_signal_the_last_failure_when_retries_are_used_up() {
         final AtomicInteger attempts = new AtomicInteger();
 
         when(discordBotService.sendMessage(MESSAGE)).thenReturn(Mono.defer(() ->
-            Mono.error(new IllegalStateException("Discord down " + attempts.incrementAndGet()))));
+            Mono.error(new IOException("connection reset " + attempts.incrementAndGet()))));
 
         StepVerifier.withVirtualTime(() -> sut.processMessage(MESSAGE))
             .thenAwait(Duration.ofMinutes(10))
-            .verifyErrorMatches(throwable -> throwable instanceof IllegalStateException
-                && throwable.getMessage().equals("Discord down 5"));
+            .verifyErrorMatches(throwable -> throwable instanceof IOException
+                && throwable.getMessage().equals("connection reset 5"));
 
         //the first attempt and four retries
         assertThat(attempts).hasValue((int) NotificationMessageService.DELIVERY_RETRY_ATTEMPTS + 1);
