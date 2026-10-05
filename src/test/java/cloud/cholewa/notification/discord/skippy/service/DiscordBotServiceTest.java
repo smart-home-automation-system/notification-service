@@ -54,7 +54,7 @@ class DiscordBotServiceTest {
     }
 
     @Test
-    void should_send_text_as_content_with_the_level_as_a_badge() {
+    void should_send_one_embed_with_the_level_as_title_and_the_text_inside() {
         discordAccepts();
 
         discordBotService.sendMessage(NotificationLevel.ERROR, MESSAGE)
@@ -62,31 +62,17 @@ class DiscordBotServiceTest {
             .verifyComplete();
 
         final MessageCreateRequest request = sentRequest();
-        //plain content: it is what a push notification previews, and what still arrives when the
-        //bot may not post embeds
-        assertThat(request.content().get()).isEqualTo(MESSAGE);
+        final EmbedData embed = request.embeds().get().getFirst();
 
-        final EmbedData badge = request.embeds().get().getFirst();
         assertThat(request.embeds().get()).hasSize(1);
-        assertThat(badge.title().get()).isEqualTo("ERROR");
-        assertThat(badge.color().get()).isEqualTo(0xE74C3C);
-        //the text is not repeated inside the badge
-        assertThat(badge.description().isAbsent()).isTrue();
+        assertThat(embed.title().get()).isEqualTo("ERROR");
+        assertThat(embed.description().get()).isEqualTo(MESSAGE);
+        assertThat(embed.color().get()).isEqualTo(0xE74C3C);
+        //the text is not repeated outside the embed
+        assertThat(request.content().isAbsent()).isTrue();
     }
 
-    //the text is message content now, and Discord resolves mentions in content
-    @Test
-    void should_not_let_the_text_mention_anyone() {
-        discordAccepts();
-
-        discordBotService.sendMessage(NotificationLevel.ERROR, "upstream said: @everyone <@123>")
-            .as(StepVerifier::create)
-            .verifyComplete();
-
-        assertThat(sentRequest().allowedMentions().get().parse().get()).isEmpty();
-    }
-
-    //a blank text would leave the badge alone: no preview, and refused without Embed Links
+    //a title alone would say that something happened and not what
     @ParameterizedTest
     @ValueSource(strings = {"", "   ", "\n"})
     void should_send_a_placeholder_for_blank_text(final String blank) {
@@ -94,12 +80,12 @@ class DiscordBotServiceTest {
 
         discordBotService.sendMessage(NotificationLevel.INFO, blank).as(StepVerifier::create).verifyComplete();
 
-        assertThat(sentRequest().content().get()).isEqualTo(DiscordBotService.EMPTY_MESSAGE);
+        assertThat(description()).isEqualTo(DiscordBotService.EMPTY_MESSAGE);
     }
 
     @ParameterizedTest
     @CsvSource({"ERROR, 15158332", "WARN, 15844367", "INFO, 3066993"})
-    void should_color_the_badge_by_level(final NotificationLevel level, final int color) {
+    void should_color_the_embed_by_level(final NotificationLevel level, final int color) {
         discordAccepts();
 
         discordBotService.sendMessage(level, MESSAGE).as(StepVerifier::create).verifyComplete();
@@ -109,7 +95,7 @@ class DiscordBotServiceTest {
         assertThat(badge.color().get()).isEqualTo(color);
     }
 
-    //Discord answers 400 for a longer content, and a 400 is not retried
+    //Discord answers 400 for a longer description, and a 400 is not retried
     @Test
     void should_cut_message_longer_than_discord_accepts() {
         discordAccepts();
@@ -118,8 +104,7 @@ class DiscordBotServiceTest {
             .as(StepVerifier::create)
             .verifyComplete();
 
-        final String content = sentRequest().content().get();
-        assertThat(content).hasSizeLessThanOrEqualTo(DiscordBotService.MAX_CONTENT_LENGTH).endsWith("…");
+        assertThat(description()).hasSizeLessThanOrEqualTo(DiscordBotService.MAX_DESCRIPTION_LENGTH).endsWith("…");
     }
 
     //half of an emoji at the cut would be refused like a message that is too long
@@ -128,25 +113,25 @@ class DiscordBotServiceTest {
         discordAccepts();
 
         //an odd number of leading characters puts every emoji across an even/odd boundary
-        discordBotService.sendMessage(NotificationLevel.INFO, "x" + "🔥".repeat(1500))
+        discordBotService.sendMessage(NotificationLevel.INFO, "x" + "🔥".repeat(2500))
             .as(StepVerifier::create)
             .verifyComplete();
 
-        final String content = sentRequest().content().get();
+        final String content = description();
         final String withoutMarker = content.substring(0, content.length() - 1);
 
-        assertThat(content).hasSizeLessThanOrEqualTo(DiscordBotService.MAX_CONTENT_LENGTH);
+        assertThat(content).hasSizeLessThanOrEqualTo(DiscordBotService.MAX_DESCRIPTION_LENGTH);
         assertThat(Character.isHighSurrogate(withoutMarker.charAt(withoutMarker.length() - 1))).isFalse();
     }
 
     @Test
     void should_keep_message_of_exactly_the_limit() {
-        final String message = "x".repeat(DiscordBotService.MAX_CONTENT_LENGTH);
+        final String message = "x".repeat(DiscordBotService.MAX_DESCRIPTION_LENGTH);
         discordAccepts();
 
         discordBotService.sendMessage(NotificationLevel.INFO, message).as(StepVerifier::create).verifyComplete();
 
-        assertThat(sentRequest().content().get()).isEqualTo(message);
+        assertThat(description()).isEqualTo(message);
     }
 
     //listing them makes discord4j decode every channel of the server, and one it cannot decode
@@ -201,6 +186,10 @@ class DiscordBotServiceTest {
         when(skippy.getChannelById(Snowflake.of(CHANNEL_ID))).thenReturn(restChannel);
         when(restChannel.createMessage(any(MessageCreateRequest.class)))
             .thenReturn(Mono.just(mock(MessageData.class)));
+    }
+
+    private String description() {
+        return sentRequest().embeds().get().getFirst().description().get();
     }
 
     private MessageCreateRequest sentRequest() {

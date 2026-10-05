@@ -34,16 +34,16 @@ review.
 
 ## Specifics
 
-- **A notification is plain text plus a badge colored by its level** (`NotificationLevel`:
-  `ERROR` red, `WARN` yellow, `INFO` green): the text is the message content, the badge an
-  embed with only a title and a color. Do not move the text into the embed — a message made
-  of an embed alone has no preview in a push notification, and without the "Embed Links"
-  permission Discord refuses it as empty. The
+- **A notification is one embed colored by its level** (`NotificationLevel`: `ERROR` red,
+  `WARN` yellow, `INFO` green): the level is the title, the text the description, and there
+  is no plain content. That is the owner's choice after seeing both: 0.4.0 posted the text as
+  content with a bare level box under it, which read poorly. The price is known — the bot
+  needs "Embed Links" on the channel (it has it; without it Discord refuses the message as
+  empty), and a push notification may preview less than it would of plain content. The
   level is read from the `level` message header; a missing or unknown one falls back to the
   queue's own — alert → `ERROR`, info → `INFO` — because a notification with the wrong color
-  is worth more than one not delivered. Because the text is content, the request allows no
-  mentions (an echoed `@everyone` must not ping the server) and a blank text is replaced by a
-  placeholder. The content is cut at 2000 characters, by code points:
+  is worth more than one not delivered. A blank text is replaced by a placeholder, and the
+  description is cut at 4096 characters, by code points:
   Discord answers a longer one with 400, and a 400 is not retried.
 - **The bot never opens a gateway session.** `DiscordBotService` uses the REST side of
   `DiscordClient` only. Until HAS-94 it called `skippy.login()` for every message and never
