@@ -60,6 +60,8 @@ logging:
 rabbit:
   alert:
     queue: notification.prod.alert
+  info:
+    queue: notification.prod.info
 
 discord:
   bot:
@@ -93,6 +95,8 @@ logging:
 rabbit:
   alert:
     queue: notification.dev.alert
+  info:
+    queue: notification.dev.info
 
 ---
 
@@ -102,3 +106,12 @@ spring:
       on-profile: test
   autoconfigure:
     exclude: org.springframework.boot.amqp.autoconfigure.RabbitAutoConfiguration
+
+logbook:
+  format:
+    style: http
+
+logging:
+  structured:
+    format:
+      console: ""

@@ -12,7 +12,7 @@
 
 ![GitHub top language](https://img.shields.io/github/languages/top/smart-home-automation-system/notification-service?style=plastic)
 ![Java](https://img.shields.io/badge/java-21-yellow?style=plastic)
-![SpringBoot](https://img.shields.io/badge/SpringBoot-4.1.0-blue?style=plastic)
+![SpringBoot](https://img.shields.io/badge/SpringBoot-4.1.1-blue?style=plastic)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=smart-home-automation-system_notification-service&metric=coverage)](https://sonarcloud.io/summary/new_code?id=smart-home-automation-system_notification-service)
 [![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=smart-home-automation-system_notification-service&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=smart-home-automation-system_notification-service)
 
@@ -29,27 +29,43 @@
 
 Notification hub for the smart-home-automation-system. It delivers **Discord**
 notifications through a Discord bot (`discord4j`), triggered two ways: by consuming alert
-messages from RabbitMQ, and through a direct HTTP endpoint. Reactive throughout
+and info messages from RabbitMQ, and through a direct HTTP endpoint. Reactive throughout
 (Spring WebFlux / Reactor).
+
+Every message is posted on the Discord text channel `alerts`, over the Discord REST API —
+the bot does not keep a gateway session. The channel is looked up once and remembered (and
+looked up again when Discord answers 404 for it); the first text channel named `alerts` is
+used. A server without that channel is a delivery failure, not a silent success.
 
 # API
 
-Base path `/home/notification` (`spring.webflux.base-path`); external traffic reaches it
-through `api-gateway-service`.
+Base path `/home/notification` (`spring.webflux.base-path`). The endpoint is not routed by
+`api-gateway-service`, so it is reachable only from inside the cluster.
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/home/notification/skippy?message=<text>` | Send `message` to the Discord `alerts` channel. Returns `200 OK`; the `message` query parameter is required (`400 Bad Request` when missing). |
+| `GET` | `/home/notification/skippy?message=<text>` | Send `message` to the Discord `alerts` channel. Returns `200 OK`; the `message` query parameter is required (`400 Bad Request` when missing); `502 Bad Gateway` when there is no `alerts` channel or Discord refuses the request. |
 
 # Messaging
 
-Consumes from RabbitMQ (virtual host `/notification`); the queue is pre-declared by the
-RabbitMQ infrastructure — this service only consumes.
+Consumes from RabbitMQ (virtual host `/notification`). The headers exchange `notification`,
+the queues and their bindings (`category` + `env`) are pre-declared by the RabbitMQ
+infrastructure — this service only consumes.
 
-| Queue (`rabbit.alert.queue`) | Payload | Handler |
-|---|---|---|
-| `notification.prod.alert` / `notification.dev.alert` | `String` (raw alert text) | `RabbitAlertMessageConsumer#consumeAlertMessage` |
+| Queue | Property | Payload | Handler |
+|---|---|---|---|
+| `notification.prod.alert` / `notification.dev.alert` | `rabbit.alert.queue` | `String` (plain text) | `RabbitAlertMessageConsumer#consumeAlertMessage` |
+| `notification.prod.info` / `notification.dev.info` | `rabbit.info.queue` | `String` (plain text) | `RabbitInfoMessageConsumer#consumeInfoMessage` |
 
-The listener returns `Mono<Void>` and delegates to `AlertMessageService#processMessage`.
-Failures are handled with `onErrorResume` — logged and swallowed (`Mono.empty()`) so a
-single bad message does not drop the consumer.
+The `dev` queues are used in the `local` profile. Publishers send `text/plain`; the only one
+today is `heating-service`, which reports temperature sensors that stopped reporting.
+
+Both listeners return `Mono<Void>` and delegate to
+`NotificationMessageService#processMessage`, which posts the text on Discord and retries a
+failed delivery four times with a backoff starting at 5 s. Only what another attempt can change is retried: a
+5xx or 404 from Discord and network failures. No `alerts` channel, a rejected token or a
+message Discord refuses is not. When the retries are used up, or there are none, the
+listener logs the message text at ERROR and acknowledges it: handing it back to the broker
+would redeliver it immediately, in a loop, for as long as Discord is unreachable. The queues
+keep a message for one hour, so a notification published while the service is down for longer
+is lost.
