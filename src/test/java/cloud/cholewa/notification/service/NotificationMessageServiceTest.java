@@ -12,7 +12,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import reactor.core.Exceptions;
 import reactor.core.publisher.Mono;
+import reactor.netty.channel.AbortedException;
 import reactor.test.StepVerifier;
 
 import java.io.IOException;
@@ -103,6 +105,39 @@ class NotificationMessageServiceTest {
 
         when(discordBotService.sendMessage(MESSAGE)).thenReturn(Mono.defer(() -> attempts.incrementAndGet() < 2
             ? Mono.error(new IllegalStateException("request failed", ReadTimeoutException.INSTANCE))
+            : Mono.empty()));
+
+        StepVerifier.withVirtualTime(() -> sut.processMessage(MESSAGE))
+            .thenAwait(Duration.ofMinutes(10))
+            .verifyComplete();
+
+        assertThat(attempts).hasValue(2);
+    }
+
+    //what discord4j signals for a 5xx once its own retries are used up
+    @Test
+    void should_retry_discord_server_error_wrapped_in_retries_exhausted() {
+        final AtomicInteger attempts = new AtomicInteger();
+        final ClientException unavailable = mock(ClientException.class);
+        when(unavailable.getStatus()).thenReturn(HttpResponseStatus.SERVICE_UNAVAILABLE);
+
+        when(discordBotService.sendMessage(MESSAGE)).thenReturn(Mono.defer(() -> attempts.incrementAndGet() < 2
+            ? Mono.error(Exceptions.retryExhausted("Retries exhausted: 10/10", unavailable))
+            : Mono.empty()));
+
+        StepVerifier.withVirtualTime(() -> sut.processMessage(MESSAGE))
+            .thenAwait(Duration.ofMinutes(10))
+            .verifyComplete();
+
+        assertThat(attempts).hasValue(2);
+    }
+
+    @Test
+    void should_retry_connection_closed_before_send() {
+        final AtomicInteger attempts = new AtomicInteger();
+
+        when(discordBotService.sendMessage(MESSAGE)).thenReturn(Mono.defer(() -> attempts.incrementAndGet() < 2
+            ? Mono.error(AbortedException.beforeSend())
             : Mono.empty()));
 
         StepVerifier.withVirtualTime(() -> sut.processMessage(MESSAGE))

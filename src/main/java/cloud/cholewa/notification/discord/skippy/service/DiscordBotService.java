@@ -9,6 +9,7 @@ import discord4j.rest.http.client.ClientException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import reactor.core.Exceptions;
 import reactor.core.publisher.Mono;
 
 @Slf4j
@@ -33,6 +34,12 @@ public class DiscordBotService {
                 //the channel was deleted or re-created: forget it, the next attempt looks it up again
                 .doOnError(ClientException.isStatusCode(NOT_FOUND), throwable -> alertsChannelId = null))
             .doOnNext(sent -> log.info("Message sent to Discord channel: {}", ALERTS_CHANNEL))
+            //discord4j retries a 5xx itself and, when that runs out, signals Reactor's "retries
+            //exhausted" with the answer only as its cause; callers decide by the answer
+            .onErrorMap(
+                throwable -> Exceptions.isRetryExhausted(throwable)
+                    && throwable.getCause() instanceof ClientException,
+                Throwable::getCause)
             .then();
     }
 

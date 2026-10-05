@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
+import reactor.netty.channel.AbortedException;
 import reactor.util.retry.Retry;
 
 import java.io.IOException;
@@ -50,17 +51,21 @@ public class NotificationMessageService {
     //the same way every time. The one 4xx worth another attempt is 404: the channel is looked up
     //again then. Rate limits (429) never get here, discord4j waits them out itself
     private static boolean isWorthRetrying(final Throwable throwable) {
-        if (throwable instanceof ClientException clientException) {
-            final int status = clientException.getStatus().code();
-
-            return status >= SERVER_ERROR || status == NOT_FOUND;
-        }
-        //the network failure is often the cause, wrapped by the client that reports it
+        //down the causes: the client wraps what it reports - a 5xx arrives inside the
+        //"retries exhausted" of discord4j's own attempts, a network failure inside whatever
+        //noticed it
         for (Throwable cause = throwable; cause != null; cause = cause.getCause()) {
+            if (cause instanceof ClientException clientException) {
+                final int status = clientException.getStatus().code();
+
+                return status >= SERVER_ERROR || status == NOT_FOUND;
+            }
             if (cause instanceof IOException
                 || cause instanceof TimeoutException
                 //netty's read and write timeouts are neither of the two above
-                || cause instanceof ChannelException) {
+                || cause instanceof ChannelException
+                //a pooled connection the peer closed while it was idle; a RuntimeException
+                || cause instanceof AbortedException) {
                 return true;
             }
         }

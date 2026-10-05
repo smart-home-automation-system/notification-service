@@ -18,6 +18,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import reactor.core.Exceptions;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -158,6 +159,19 @@ class DiscordBotServiceTest {
         discordBotService.sendMessage(MESSAGE).as(StepVerifier::create).verifyComplete();
 
         verify(skippy, times(2)).getGuilds();
+    }
+
+    //so that the caller sees Discord's answer, and /skippy answers 502 instead of the default 500
+    @Test
+    void should_signal_the_discord_answer_when_its_own_retries_are_exhausted() {
+        final ClientException unavailable = mock(ClientException.class);
+
+        guildWith(channel("alerts", Channel.Type.GUILD_TEXT));
+        when(skippy.getChannelById(Snowflake.of(CHANNEL_ID))).thenReturn(restChannel);
+        when(restChannel.createMessage(MESSAGE))
+            .thenReturn(Mono.error(Exceptions.retryExhausted("Retries exhausted: 10/10", unavailable)));
+
+        discordBotService.sendMessage(MESSAGE).as(StepVerifier::create).verifyErrorMatches(unavailable::equals);
     }
 
     //a failed lookup is not remembered either

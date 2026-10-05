@@ -46,7 +46,8 @@ review.
   every match could not be retried without repeating the posts that had already succeeded.
 - **Delivery is retried in the service, not by the broker** (`NotificationMessageService`:
   four retries, backoff from 5 s; only a 5xx or 404 from Discord and network failures are
-  retried, everything else would fail the same way again). The listeners then swallow the error on purpose: a
+  retried, everything else would fail the same way again — the check walks the causes,
+  because discord4j reports a 5xx wrapped in the "retries exhausted" of its own attempts). The listeners then swallow the error on purpose: a
   listener returning `Mono` that signals an error makes the container hand the message back,
   and the broker redelivers it at once — a tight loop for as long as Discord is down. When
   the retries are used up the message text is logged at ERROR; from then on the log is the
