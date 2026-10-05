@@ -16,7 +16,7 @@ public class NotificationExceptionProcessor implements ExceptionProcessor {
         log.error("Error while sending notification: {}", throwable.getMessage());
         
         return Errors.builder()
-            .httpStatus(HttpStatus.BAD_REQUEST)
+            .httpStatus(HttpStatus.BAD_GATEWAY)
             .errors(Collections.singleton(
                 ErrorMessage.builder().message(throwable.getMessage()).build()
             ))

@@ -11,6 +11,8 @@ import discord4j.discordjson.json.UserGuildData;
 import discord4j.discordjson.possible.Possible;
 import discord4j.rest.entity.RestChannel;
 import discord4j.rest.entity.RestGuild;
+import discord4j.rest.http.client.ClientException;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -21,9 +23,11 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -123,6 +127,48 @@ class DiscordBotServiceTest {
         discordBotService.sendMessage(MESSAGE)
             .as(StepVerifier::create)
             .verifyError(IllegalStateException.class);
+    }
+
+    @Test
+    void should_look_the_channel_up_only_once() {
+        guildWith(channel("alerts", Channel.Type.GUILD_TEXT));
+        when(skippy.getChannelById(Snowflake.of(CHANNEL_ID))).thenReturn(restChannel);
+        when(restChannel.createMessage(anyString())).thenReturn(Mono.just(mock(MessageData.class)));
+
+        discordBotService.sendMessage("first").as(StepVerifier::create).verifyComplete();
+        discordBotService.sendMessage("second").as(StepVerifier::create).verifyComplete();
+
+        verify(skippy, times(1)).getGuilds();
+        verify(restChannel).createMessage("first");
+        verify(restChannel).createMessage("second");
+    }
+
+    @Test
+    void should_look_the_channel_up_again_after_discord_answers_404() {
+        final ClientException notFound = mock(ClientException.class);
+        when(notFound.getStatus()).thenReturn(HttpResponseStatus.NOT_FOUND);
+
+        guildWith(channel("alerts", Channel.Type.GUILD_TEXT));
+        when(skippy.getChannelById(Snowflake.of(CHANNEL_ID))).thenReturn(restChannel);
+        when(restChannel.createMessage(MESSAGE))
+            .thenReturn(Mono.error(notFound))
+            .thenReturn(Mono.just(mock(MessageData.class)));
+
+        discordBotService.sendMessage(MESSAGE).as(StepVerifier::create).verifyErrorMatches(notFound::equals);
+        discordBotService.sendMessage(MESSAGE).as(StepVerifier::create).verifyComplete();
+
+        verify(skippy, times(2)).getGuilds();
+    }
+
+    //a failed lookup is not remembered either
+    @Test
+    void should_look_the_channel_up_again_after_it_was_not_found() {
+        when(skippy.getGuilds()).thenReturn(Flux.empty());
+
+        discordBotService.sendMessage(MESSAGE).as(StepVerifier::create).verifyError(NotificationException.class);
+        discordBotService.sendMessage(MESSAGE).as(StepVerifier::create).verifyError(NotificationException.class);
+
+        verify(skippy, times(2)).getGuilds();
     }
 
     private void guildWith(final ChannelData channel) {

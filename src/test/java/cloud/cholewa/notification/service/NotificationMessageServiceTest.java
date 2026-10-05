@@ -1,7 +1,12 @@
 package cloud.cholewa.notification.service;
 
 import cloud.cholewa.notification.discord.skippy.service.DiscordBotService;
+import cloud.cholewa.notification.infrastructure.error.NotificationException;
+import discord4j.rest.http.client.ClientException;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -14,6 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Answers.RETURNS_SMART_NULLS;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -51,6 +57,42 @@ class NotificationMessageServiceTest {
             .verifyComplete();
 
         assertThat(attempts).hasValue(3);
+    }
+
+    //the same answer every time: retrying only keeps the message unacknowledged for longer
+    @Test
+    void should_not_retry_when_the_channel_does_not_exist() {
+        final AtomicInteger attempts = new AtomicInteger();
+
+        when(discordBotService.sendMessage(MESSAGE)).thenReturn(Mono.defer(() -> {
+            attempts.incrementAndGet();
+            return Mono.error(new NotificationException("Discord text channel not found: alerts"));
+        }));
+
+        StepVerifier.withVirtualTime(() -> sut.processMessage(MESSAGE))
+            .thenAwait(Duration.ofMinutes(10))
+            .verifyError(NotificationException.class);
+
+        assertThat(attempts).hasValue(1);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"400, 1", "401, 1", "403, 1", "404, 5", "500, 5", "503, 5"})
+    void should_retry_only_discord_answers_that_can_change(final int status, final int expectedAttempts) {
+        final AtomicInteger attempts = new AtomicInteger();
+        final ClientException refused = mock(ClientException.class);
+        when(refused.getStatus()).thenReturn(HttpResponseStatus.valueOf(status));
+
+        when(discordBotService.sendMessage(MESSAGE)).thenReturn(Mono.defer(() -> {
+            attempts.incrementAndGet();
+            return Mono.error(refused);
+        }));
+
+        StepVerifier.withVirtualTime(() -> sut.processMessage(MESSAGE))
+            .thenAwait(Duration.ofMinutes(10))
+            .verifyErrorMatches(refused::equals);
+
+        assertThat(attempts).hasValue(expectedAttempts);
     }
 
     @Test

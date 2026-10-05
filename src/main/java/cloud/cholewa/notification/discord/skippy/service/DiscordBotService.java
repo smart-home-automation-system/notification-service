@@ -5,6 +5,7 @@ import discord4j.common.util.Snowflake;
 import discord4j.core.DiscordClient;
 import discord4j.core.object.entity.channel.Channel;
 import discord4j.discordjson.json.ChannelData;
+import discord4j.rest.http.client.ClientException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -16,22 +17,46 @@ import reactor.core.publisher.Mono;
 public class DiscordBotService {
 
     private static final String ALERTS_CHANNEL = "alerts";
+    private static final int NOT_FOUND = 404;
 
     private final DiscordClient skippy;
+
+    //looked up once and kept: without it every message, and every retry of it, would list the
+    //guilds and their channels again before posting
+    private volatile Snowflake alertsChannelId;
 
     //over the REST API only: skippy.login() opens a gateway session, which nothing here ever
     //closed - one more websocket for every message sent
     public Mono<Void> sendMessage(final String message) {
-        return skippy.getGuilds()
-            .flatMap(guild -> skippy.getGuildById(Snowflake.of(guild.id())).getChannels())
-            .filter(DiscordBotService::isAlertsChannel)
-            .flatMap(channel -> skippy.getChannelById(Snowflake.of(channel.id())).createMessage(message))
+        return alertsChannel()
+            .flatMap(channelId -> skippy.getChannelById(channelId).createMessage(message)
+                //the channel was deleted or re-created: forget it, the next attempt looks it up again
+                .doOnError(ClientException.isStatusCode(NOT_FOUND), throwable -> alertsChannelId = null))
             .doOnNext(sent -> log.info("Message sent to Discord channel: {}", ALERTS_CHANNEL))
+            .then();
+    }
+
+    private Mono<Snowflake> alertsChannel() {
+        return Mono.defer(() -> {
+            final Snowflake known = alertsChannelId;
+
+            return known != null ? Mono.just(known) : findAlertsChannel();
+        });
+    }
+
+    //the first match only: one message, one post - posting to every match could not be retried
+    //without repeating the posts that had already succeeded
+    private Mono<Snowflake> findAlertsChannel() {
+        return skippy.getGuilds()
+            .concatMap(guild -> skippy.getGuildById(Snowflake.of(guild.id())).getChannels())
+            .filter(DiscordBotService::isAlertsChannel)
+            .next()
+            .map(channel -> Snowflake.of(channel.id()))
+            .doOnNext(channelId -> alertsChannelId = channelId)
             //no channel is a failure, not a success: the caller would otherwise report a
             //notification as delivered that nobody will ever read
             .switchIfEmpty(Mono.error(() ->
-                new NotificationException("Discord text channel not found: " + ALERTS_CHANNEL)))
-            .then();
+                new NotificationException("Discord text channel not found: " + ALERTS_CHANNEL)));
     }
 
     private static boolean isAlertsChannel(final ChannelData channel) {

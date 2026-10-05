@@ -13,10 +13,10 @@ class NotificationExceptionProcessorTest {
     private final NotificationExceptionProcessor sut = new NotificationExceptionProcessor();
 
     @Test
-    void should_map_notification_exception_to_bad_request_with_message() {
+    void should_map_notification_exception_to_bad_gateway_with_message() {
         final Errors errors = sut.apply(new NotificationException("channel unavailable"));
 
-        assertThat(errors.getHttpStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(errors.getHttpStatus()).isEqualTo(HttpStatus.BAD_GATEWAY);
         assertThat(errors.getErrors())
             .extracting(ErrorMessage::getMessage)
             .containsExactly("channel unavailable");
