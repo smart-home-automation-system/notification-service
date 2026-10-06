@@ -63,13 +63,15 @@ infrastructure — this service only consumes.
 
 | Queue | Property | Payload | Handler |
 |---|---|---|---|
-| `notification.prod.alert` / `notification.dev.alert` | `rabbit.alert.queue` | `String` (plain text), optional header `level` (default `error`) | `RabbitAlertMessageConsumer#consumeAlertMessage` |
-| `notification.prod.info` / `notification.dev.info` | `rabbit.info.queue` | `String` (plain text), optional header `level` (default `info`) | `RabbitInfoMessageConsumer#consumeInfoMessage` |
+| `notification.prod.alert` / `notification.dev.alert` | `rabbit.alert.queue` | `String` (plain text), optional header `level` (default `error`) | `RabbitNotificationConsumer#consumeMessage` |
+| `notification.prod.info` / `notification.dev.info` | `rabbit.info.queue` | `String` (plain text), optional header `level` (default `info`) | `RabbitNotificationConsumer#consumeMessage` |
 
 The `dev` queues are used in the `local` profile. Publishers send `text/plain`; the only one
 today is `heating-service`, which reports temperature sensors that stopped reporting.
 
-Both listeners return `Mono<Void>` and delegate to
+One listener serves both queues. The queue a message was consumed from matters only when the
+message names no `level` (or an unknown one): it then decides the default in the table above.
+The listener returns `Mono<Void>` and delegates to
 `NotificationMessageService#processMessage`, which posts the text on Discord and retries a
 failed delivery four times with a backoff starting at 5 s. Only what another attempt can change is retried: a
 5xx from Discord and network failures. A wrong channel id, a rejected token or a message
