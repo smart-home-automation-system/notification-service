@@ -18,7 +18,7 @@ review.
   exchange `notification` by `category` and `env`; the exchange, the queues and the bindings
   are declared by the broker definitions in `deployment-tools`, not by this service.
 - Publishers: `heating-service` (silent temperature sensors, HAS-94). The payload is plain
-  text — the listener takes a `String` and there is no JSON converter.
+  text — the listeners take a `String` and there is no JSON converter.
 - Calls: the Discord REST API. Every message goes to one text channel (`alerts`), alerts and
   infos alike; the channel is configured by id.
 - `GET /home/notification/skippy?message=` sends a text by hand. It is deliberately **not**
@@ -46,13 +46,14 @@ review.
   empty), and a push notification may preview less than it would of plain content. The
   level is read from the `level` message header; a missing or unknown one falls back to the
   queue's own — alert → `ERROR`, info → `INFO` — because a notification with the wrong color
-  is worth more than one not delivered. One listener serves both queues since HAS-179
-  (`RabbitNotificationConsumer`) and reads the queue from the `AmqpHeaders.CONSUMER_QUEUE`
-  header — the container notes it on every delivery, it is not a header on the wire. Only the
-  info queue gives `INFO`; anything else, a queue added to the listener later included, is an
-  `ERROR`. `RabbitNotificationConsumerWiringTest` runs the method behind Spring AMQP's own
-  adapter, without a broker: it is the only test that would notice a wrong header name, which
-  would turn every info red while the unit test stays green. A blank text is replaced by a placeholder, and the
+  is worth more than one not delivered. Both listeners live in `RabbitNotificationConsumer` since HAS-179,
+  as two thin methods over one chain — **two listeners on purpose, do not merge them into one
+  on both queues**. That was tried in the same task (the queue read from
+  `AmqpHeaders.CONSUMER_QUEUE`) and dropped in review: one container only warns when one of
+  its queues is missing and keeps consuming the other, a publisher can overwrite that header
+  (the header mapper copies the message's own headers over it, so `amqp_consumerQueue` on the
+  wire would repaint an alert green), and a restart of the shared channel redelivers the
+  unacknowledged messages of both queues. A blank text is replaced by a placeholder, and the
   description is cut at 4096 characters, by code points:
   Discord answers a longer one with 400, and a 400 is not retried.
 - **The bot never opens a gateway session.** `DiscordBotService` uses the REST side of
@@ -71,15 +72,17 @@ review.
 - **Delivery is retried in the service, not by the broker** (`NotificationMessageService`:
   four retries, backoff from 5 s; only a 5xx from Discord and network failures are
   retried, everything else would fail the same way again — the check walks the causes,
-  because discord4j reports a 5xx wrapped in the "retries exhausted" of its own attempts). The listener then swallows the error on purpose: a
+  because discord4j reports a 5xx wrapped in the "retries exhausted" of its own attempts). The listeners then swallow the error on purpose: a
   listener returning `Mono` that signals an error makes the container hand the message back,
   and the broker redelivers it at once — a tight loop for as long as Discord is down. When
   the retries are used up the message text is logged at ERROR; from then on the log is the
-  only copy.
+  only copy. The call into the service is wrapped in `Mono.defer`, because an exception thrown
+  while the request is put together — `DiscordBotService` builds it before there is a `Mono` —
+  would otherwise leave the listener method and start the same loop.
 - **The queues have a one-hour TTL**, so a notification published while this service is down
   for longer is gone. Publishers that care repeat it themselves (`heating-service` reminds
   every 24 h).
-- **`.contextCapture()` is the last operator of the listener chain** and has to stay there
+- **`.contextCapture()` is the last operator of the listener chain**, shared by both listeners, and has to stay there
   — Spring AMQP does not put the listener observation into the reactor context, so without it
   everything a message triggers is logged without a `traceId`.
 - **Surefire activates the `test` profile for every class**; that document excludes

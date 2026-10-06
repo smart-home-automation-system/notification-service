@@ -8,10 +8,10 @@ import cloud.cholewa.notification.model.NotificationLevel;
 import cloud.cholewa.notification.service.NotificationMessageService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.LoggerFactory;
@@ -29,12 +29,13 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class RabbitNotificationConsumerTest {
 
-    private static final String ALERT_QUEUE = "notification.test.alert";
-    private static final String INFO_QUEUE = "notification.test.info";
+    private static final String ALERT = "alert";
+    private static final String MESSAGE = "dummy message";
 
     @Mock(answer = RETURNS_SMART_NULLS)
     private NotificationMessageService notificationMessageService;
 
+    @InjectMocks
     private RabbitNotificationConsumer sut;
 
     private final Logger logger = (Logger) LoggerFactory.getLogger(RabbitNotificationConsumer.class);
@@ -42,7 +43,6 @@ class RabbitNotificationConsumerTest {
 
     @BeforeEach
     void setUp() {
-        sut = new RabbitNotificationConsumer(notificationMessageService, INFO_QUEUE);
         logs.start();
         logger.addAppender(logs);
     }
@@ -52,84 +52,123 @@ class RabbitNotificationConsumerTest {
         logger.detachAppender(logs);
     }
 
-    @Test
-    void should_listen_on_the_alert_and_the_info_queue() throws NoSuchMethodException {
+    //the default level of a method is right only as long as the method listens on its own queue
+    @ParameterizedTest
+    @CsvSource({
+        "consumeAlertMessage, ${rabbit.alert.queue}",
+        "consumeInfoMessage, ${rabbit.info.queue}"
+    })
+    void should_listen_on_its_own_queue(final String method, final String queue) throws NoSuchMethodException {
         final RabbitListener listener = RabbitNotificationConsumer.class
-            .getDeclaredMethod("consumeMessage", String.class, String.class, String.class)
+            .getDeclaredMethod(method, String.class, String.class)
             .getAnnotation(RabbitListener.class);
 
-        assertThat(listener.queues()).containsExactlyInAnyOrder("${rabbit.alert.queue}", "${rabbit.info.queue}");
+        assertThat(listener.queues()).containsExactly(queue);
     }
 
-    @ParameterizedTest(name = "a message from {0} with the level header [{1}] is shown as {2}")
+    @ParameterizedTest(name = "{0} message with the level header [{1}] is shown as {2}")
     @CsvSource(nullValues = "-", value = {
         //without a level the queue decides
-        ALERT_QUEUE + ", -, ERROR",
-        INFO_QUEUE + ", -, INFO",
+        "alert, -, ERROR",
+        "info, -, INFO",
         //the level named by the publisher wins on both queues
-        ALERT_QUEUE + ", warn, WARN",
-        ALERT_QUEUE + ", info, INFO",
-        INFO_QUEUE + ", warn, WARN",
-        INFO_QUEUE + ", error, ERROR",
+        "alert, warn, WARN",
+        "alert, info, INFO",
+        "info, warn, WARN",
+        "info, error, ERROR",
         //an unknown level is no level
-        ALERT_QUEUE + ", fatal, ERROR",
-        INFO_QUEUE + ", fatal, INFO",
-        //a queue that is neither of the two, or none at all, must not cost the notification
-        "notification.test.other, -, ERROR",
-        "-, -, ERROR",
-        "-, info, INFO"
+        "alert, fatal, ERROR",
+        "info, fatal, INFO"
     })
     void should_take_the_level_from_the_header_and_fall_back_to_the_queue(
-        final String queue,
+        final String category,
         final String level,
         final NotificationLevel expected
     ) {
-        when(notificationMessageService.processMessage(expected, "dummy message")).thenReturn(Mono.empty());
+        when(notificationMessageService.processMessage(expected, MESSAGE)).thenReturn(Mono.empty());
 
-        sut.consumeMessage("dummy message", queue, level)
+        consume(category, level)
             .as(StepVerifier::create)
             .verifyComplete();
 
-        verify(notificationMessageService).processMessage(expected, "dummy message");
+        verify(notificationMessageService).processMessage(expected, MESSAGE);
         verifyNoMoreInteractions(notificationMessageService);
     }
 
-    @Test
-    void should_log_the_received_message_with_its_queue() {
-        when(notificationMessageService.processMessage(NotificationLevel.ERROR, "dummy message"))
-            .thenReturn(Mono.empty());
+    @ParameterizedTest
+    @CsvSource({
+        "alert, ERROR, Received alert message: dummy message",
+        "info, INFO, Received info message: dummy message"
+    })
+    void should_log_the_received_message(
+        final String category,
+        final NotificationLevel defaultLevel,
+        final String expectedLog
+    ) {
+        when(notificationMessageService.processMessage(defaultLevel, MESSAGE)).thenReturn(Mono.empty());
 
-        sut.consumeMessage("dummy message", ALERT_QUEUE, null)
+        consume(category, null)
             .as(StepVerifier::create)
             .verifyComplete();
 
         assertThat(logs.list)
             .extracting(ILoggingEvent::getLevel, ILoggingEvent::getFormattedMessage)
-            .containsExactly(
-                tuple(
-                    Level.INFO,
-                    "Received message from notification.test.alert: dummy message"
-                )
-            );
+            .containsExactly(tuple(Level.INFO, expectedLog));
     }
 
     //an error signal would make the container hand the message back and receive it again at once,
     //and the level matters: ERROR is what the alerts on the logs see
     @ParameterizedTest
-    @CsvSource({ALERT_QUEUE, INFO_QUEUE})
-    void should_complete_and_log_the_message_at_error_when_delivery_fails(final String queue) {
-        when(notificationMessageService.processMessage(
-            INFO_QUEUE.equals(queue) ? NotificationLevel.INFO : NotificationLevel.ERROR,
-            "dummy message"
-        )).thenReturn(Mono.error(new RuntimeException("Error")));
+    @CsvSource({
+        "alert, ERROR, Alert message not delivered: dummy message - Error",
+        "info, INFO, Info message not delivered: dummy message - Error"
+    })
+    void should_complete_and_log_the_message_at_error_when_delivery_fails(
+        final String category,
+        final NotificationLevel defaultLevel,
+        final String expectedLog
+    ) {
+        when(notificationMessageService.processMessage(defaultLevel, MESSAGE))
+            .thenReturn(Mono.error(new RuntimeException("Error")));
 
-        sut.consumeMessage("dummy message", queue, null)
+        consume(category, null)
             .as(StepVerifier::create)
             .verifyComplete();
 
         assertThat(logs.list)
             .filteredOn(event -> event.getLevel() == Level.ERROR)
             .extracting(ILoggingEvent::getFormattedMessage)
-            .containsExactly("Message from " + queue + " not delivered: dummy message - Error");
+            .containsExactly(expectedLog);
+    }
+
+    //thrown before there is a Mono to signal it: without the defer it would leave the listener
+    //method and start the same redelivery loop
+    @ParameterizedTest
+    @CsvSource({
+        "alert, ERROR, Alert message not delivered: dummy message - Error",
+        "info, INFO, Info message not delivered: dummy message - Error"
+    })
+    void should_complete_and_log_the_message_at_error_when_delivery_throws(
+        final String category,
+        final NotificationLevel defaultLevel,
+        final String expectedLog
+    ) {
+        when(notificationMessageService.processMessage(defaultLevel, MESSAGE))
+            .thenThrow(new RuntimeException("Error"));
+
+        consume(category, null)
+            .as(StepVerifier::create)
+            .verifyComplete();
+
+        assertThat(logs.list)
+            .filteredOn(event -> event.getLevel() == Level.ERROR)
+            .extracting(ILoggingEvent::getFormattedMessage)
+            .containsExactly(expectedLog);
+    }
+
+    private Mono<Void> consume(final String category, final String level) {
+        return ALERT.equals(category)
+            ? sut.consumeAlertMessage(MESSAGE, level)
+            : sut.consumeInfoMessage(MESSAGE, level);
     }
 }
