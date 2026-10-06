@@ -87,6 +87,11 @@ review.
 - **`.contextCapture()` is the last operator of the listener chain**, shared by both listeners, and has to stay there
   — Spring AMQP does not put the listener observation into the reactor context, so without it
   everything a message triggers is logged without a `traceId`.
+- **The RabbitMQ connection is named after the pod** (`RabbitConfig`, HAS-106): the broker shows
+  `notification-service-<pod id>`, which tells the old pod from the new one during a rollout.
+  `HOSTNAME` is taken only when it starts with `spring.application.name` — outside the cluster
+  it is missing, empty, a workstation or a container id, and the name is then
+  `notification-service-local`. The same convention holds in every service that talks to the broker.
 - **Surefire activates the `test` profile for every class**; that document excludes
   `RabbitAutoConfiguration`, so no test needs a broker, and switches the console logs back to
   plain text.
