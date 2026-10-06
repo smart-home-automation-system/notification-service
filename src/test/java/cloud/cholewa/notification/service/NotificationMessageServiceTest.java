@@ -1,7 +1,6 @@
 package cloud.cholewa.notification.service;
 
 import cloud.cholewa.notification.discord.skippy.service.DiscordBotService;
-import cloud.cholewa.notification.infrastructure.error.NotificationException;
 import cloud.cholewa.notification.model.NotificationLevel;
 import discord4j.rest.http.client.ClientException;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -66,17 +65,17 @@ class NotificationMessageServiceTest {
 
     //the same answer every time: retrying only keeps the message unacknowledged for longer
     @Test
-    void should_not_retry_notification_exception() {
+    void should_not_retry_a_fault_of_the_service_itself() {
         final AtomicInteger attempts = new AtomicInteger();
 
         when(discordBotService.sendMessage(NotificationLevel.WARN, MESSAGE)).thenReturn(Mono.defer(() -> {
             attempts.incrementAndGet();
-            return Mono.error(new NotificationException("not deliverable"));
+            return Mono.error(new IllegalStateException("not deliverable"));
         }));
 
         StepVerifier.withVirtualTime(() -> sut.processMessage(NotificationLevel.WARN, MESSAGE))
             .thenAwait(Duration.ofMinutes(10))
-            .verifyError(NotificationException.class);
+            .verifyError(IllegalStateException.class);
 
         assertThat(attempts).hasValue(1);
     }

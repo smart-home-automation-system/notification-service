@@ -31,7 +31,7 @@
 		<mapstruct.version>1.6.3</mapstruct.version>
 
 		<!--  internal dependencies versions-->
-		<cholewa-commons.version>1.5.1</cholewa-commons.version>
+		<cholewa-commons.version>1.7.0</cholewa-commons.version>
 
 		<!--  plugins versions-->
 		<maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>

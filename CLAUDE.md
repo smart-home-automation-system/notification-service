@@ -23,7 +23,11 @@ review.
   infos alike; the channel is configured by id.
 - `GET /home/notification/skippy?message=` sends a text by hand. It is deliberately **not**
   routed by `api-gateway-service`.
-- Uses libraries: `cholewa-commons`. No database, no `smart-home-sdk`.
+- Uses libraries: `cholewa-commons` (1.7.0 since HAS-179). Of what the library
+  auto-configures, only the error handling is used: there is no database, and the English
+  Bean Validation messages are on but have nothing to word — the only constraints sit on
+  `DiscordBotConfig`, validated at startup, where the JVM locale still decides (the accepted
+  exception of the org rule). No `smart-home-sdk`.
 
 ## Build & run
 
@@ -42,7 +46,14 @@ review.
   empty), and a push notification may preview less than it would of plain content. The
   level is read from the `level` message header; a missing or unknown one falls back to the
   queue's own — alert → `ERROR`, info → `INFO` — because a notification with the wrong color
-  is worth more than one not delivered. A blank text is replaced by a placeholder, and the
+  is worth more than one not delivered. Both listeners live in `RabbitNotificationConsumer` since HAS-179,
+  as two thin methods over one chain — **two listeners on purpose, do not merge them into one
+  on both queues**. That was tried in the same task (the queue read from
+  `AmqpHeaders.CONSUMER_QUEUE`) and dropped in review: one container only warns when one of
+  its queues is missing and keeps consuming the other, a publisher can overwrite that header
+  (the header mapper copies the message's own headers over it, so `amqp_consumerQueue` on the
+  wire would repaint an alert green), and a restart of the shared channel redelivers the
+  unacknowledged messages of both queues. A blank text is replaced by a placeholder, and the
   description is cut at 4096 characters, by code points:
   Discord answers a longer one with 400, and a 400 is not retried.
 - **The bot never opens a gateway session.** `DiscordBotService` uses the REST side of
@@ -55,7 +66,9 @@ review.
   to Discord. Posting to a known id decodes only the reply to the post. Do not bring the
   lookup back, and treat any new discord4j call that returns server data the same way.
 - **A discord4j `ClientException` is answered with 502 by `GET /skippy`**, with the status only
-  — its message carries the request and Discord's whole reply.
+  — its message carries the request and Discord's whole reply. It is the only exception with a
+  processor of its own: `NotificationException` ("channel not found") went in HAS-179, nothing
+  had thrown it since the channel is configured by id.
 - **Delivery is retried in the service, not by the broker** (`NotificationMessageService`:
   four retries, backoff from 5 s; only a 5xx from Discord and network failures are
   retried, everything else would fail the same way again — the check walks the causes,
@@ -63,11 +76,15 @@ review.
   listener returning `Mono` that signals an error makes the container hand the message back,
   and the broker redelivers it at once — a tight loop for as long as Discord is down. When
   the retries are used up the message text is logged at ERROR; from then on the log is the
-  only copy.
+  only copy. An exception *thrown* on the way is the same trap: it would leave the listener
+  method and start the same loop. `DiscordBotService.sendMessage` therefore defers the
+  building of its request, and the listener chain defers its call into the service as well;
+  the ERROR line names the class of the exception, because a fault of the service itself
+  often has no message.
 - **The queues have a one-hour TTL**, so a notification published while this service is down
   for longer is gone. Publishers that care repeat it themselves (`heating-service` reminds
   every 24 h).
-- **`.contextCapture()` is the last operator of both listener chains** and has to stay there
+- **`.contextCapture()` is the last operator of the listener chain**, shared by both listeners, and has to stay there
   — Spring AMQP does not put the listener observation into the reactor context, so without it
   everything a message triggers is logged without a `traceId`.
 - **Surefire activates the `test` profile for every class**; that document excludes
