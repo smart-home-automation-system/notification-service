@@ -76,9 +76,11 @@ review.
   listener returning `Mono` that signals an error makes the container hand the message back,
   and the broker redelivers it at once — a tight loop for as long as Discord is down. When
   the retries are used up the message text is logged at ERROR; from then on the log is the
-  only copy. The call into the service is wrapped in `Mono.defer`, because an exception thrown
-  while the request is put together — `DiscordBotService` builds it before there is a `Mono` —
-  would otherwise leave the listener method and start the same loop.
+  only copy. An exception *thrown* on the way is the same trap: it would leave the listener
+  method and start the same loop. `DiscordBotService.sendMessage` therefore defers the
+  building of its request, and the listener chain defers its call into the service as well;
+  the ERROR line names the class of the exception, because a fault of the service itself
+  often has no message.
 - **The queues have a one-hour TTL**, so a notification published while this service is down
   for longer is gone. Publishers that care repeat it themselves (`heating-service` reminds
   every 24 h).

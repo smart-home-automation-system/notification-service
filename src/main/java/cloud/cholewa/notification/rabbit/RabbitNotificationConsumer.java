@@ -8,9 +8,13 @@ import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
 
+/**
+ * Two listeners on purpose, each with a container of its own - do not merge them into one on both
+ * queues: one container only warns when one of its queues is missing and keeps consuming the
+ * other, and what happens to the channel of one queue would redeliver the messages of both.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -20,46 +24,37 @@ public class RabbitNotificationConsumer {
 
     private final NotificationMessageService notificationMessageService;
 
-    //an alert is an ERROR unless its publisher says otherwise in the level header
     @RabbitListener(queues = "${rabbit.alert.queue}")
     Mono<Void> consumeAlertMessage(
         @Payload final String message,
         @Header(name = LEVEL_HEADER, required = false) final String level
     ) {
-        return consume("alert", NotificationLevel.ERROR, message, level);
+        return consume(Category.ALERT, message, level);
     }
 
-    //an info is an INFO unless its publisher says otherwise in the level header
     @RabbitListener(queues = "${rabbit.info.queue}")
     Mono<Void> consumeInfoMessage(
         @Payload final String message,
         @Header(name = LEVEL_HEADER, required = false) final String level
     ) {
-        return consume("info", NotificationLevel.INFO, message, level);
+        return consume(Category.INFO, message, level);
     }
 
-    //two listeners on purpose, each with a container of its own: a queue that is missing stays a
-    //failure of its listener, and what happens to the channel of one queue never redelivers the
-    //messages of the other
-    private Mono<Void> consume(
-        final String category,
-        final NotificationLevel defaultLevel,
-        final String message,
-        final String level
-    ) {
-        //deferred, so that an exception thrown while the delivery is put together ends in the
-        //onErrorResume below like any other, instead of leaving the listener method
+    private Mono<Void> consume(final Category category, final String message, final String level) {
+        //deferred, so that an exception thrown on the way ends in the onErrorResume below like
+        //a signalled one, instead of leaving the listener method
         return Mono.defer(() -> notificationMessageService
-                .processMessage(NotificationLevel.of(level, defaultLevel), message))
-            .doOnSubscribe(subscription -> log.info("Received {} message: {}", category, message))
+                .processMessage(NotificationLevel.of(level, category.defaultLevel), message))
+            .doOnSubscribe(subscription -> log.info("Received {} message: {}", category.received, message))
             //the delivery was already retried; an error signal here would make the container hand
             //the message back to the broker and receive it again at once. The text goes into the
             //log, because from this point the log is the only place the notification still exists
             .onErrorResume(throwable -> {
                 log.error(
-                    "{} message not delivered: {} - {}",
-                    StringUtils.capitalize(category),
+                    "{} message not delivered: {} - {}: {}",
+                    category.notDelivered,
                     message,
+                    throwable.getClass().getSimpleName(),
                     throwable.getMessage()
                 );
                 return Mono.empty();
@@ -69,5 +64,18 @@ public class RabbitNotificationConsumer {
             //so without this the traceId stays on the container thread and everything the message
             //triggers is logged without it
             .contextCapture();
+    }
+
+    //what tells the two queues apart: the level of a message whose publisher names none in the
+    //level header, and the wording of the log
+    @RequiredArgsConstructor
+    private enum Category {
+
+        ALERT(NotificationLevel.ERROR, "alert", "Alert"),
+        INFO(NotificationLevel.INFO, "info", "Info");
+
+        private final NotificationLevel defaultLevel;
+        private final String received;
+        private final String notDelivered;
     }
 }

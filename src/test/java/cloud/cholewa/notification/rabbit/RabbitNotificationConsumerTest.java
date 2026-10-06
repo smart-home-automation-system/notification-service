@@ -120,8 +120,8 @@ class RabbitNotificationConsumerTest {
     //and the level matters: ERROR is what the alerts on the logs see
     @ParameterizedTest
     @CsvSource({
-        "alert, ERROR, Alert message not delivered: dummy message - Error",
-        "info, INFO, Info message not delivered: dummy message - Error"
+        "alert, ERROR, Alert message not delivered: dummy message - RuntimeException: Error",
+        "info, INFO, Info message not delivered: dummy message - RuntimeException: Error"
     })
     void should_complete_and_log_the_message_at_error_when_delivery_fails(
         final String category,
@@ -145,8 +145,8 @@ class RabbitNotificationConsumerTest {
     //method and start the same redelivery loop
     @ParameterizedTest
     @CsvSource({
-        "alert, ERROR, Alert message not delivered: dummy message - Error",
-        "info, INFO, Info message not delivered: dummy message - Error"
+        "alert, ERROR, Alert message not delivered: dummy message - RuntimeException: Error",
+        "info, INFO, Info message not delivered: dummy message - RuntimeException: Error"
     })
     void should_complete_and_log_the_message_at_error_when_delivery_throws(
         final String category,

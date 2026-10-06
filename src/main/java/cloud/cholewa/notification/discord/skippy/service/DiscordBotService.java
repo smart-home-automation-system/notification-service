@@ -34,7 +34,10 @@ public class DiscordBotService {
     //makes discord4j decode every channel of the server, and in 0.3.0 one channel it could not
     //decode took the whole delivery down with it
     public Mono<Void> sendMessage(final NotificationLevel level, final String message) {
-        return skippy.getChannelById(alertsChannelId).createMessage(toRequest(level, message))
+        //deferred: the request is built before discord4j returns a Mono, and an exception thrown
+        //there has to reach the caller as a signal - a listener that lets one escape gets its
+        //message redelivered at once
+        return Mono.defer(() -> skippy.getChannelById(alertsChannelId).createMessage(toRequest(level, message)))
             .doOnNext(sent -> log.info(
                 "{} message sent to Discord channel: {}", level, alertsChannelId.asString()))
             //discord4j retries a 5xx itself and, when that runs out, signals Reactor's "retries

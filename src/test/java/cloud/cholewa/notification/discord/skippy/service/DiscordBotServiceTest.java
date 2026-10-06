@@ -72,6 +72,14 @@ class DiscordBotServiceTest {
         assertThat(request.content().isAbsent()).isTrue();
     }
 
+    //thrown while the request is built, before discord4j returns anything to subscribe to
+    @Test
+    void should_signal_a_failure_to_build_the_request_instead_of_throwing_it() {
+        discordBotService.sendMessage(NotificationLevel.ERROR, null)
+            .as(StepVerifier::create)
+            .verifyError(NullPointerException.class);
+    }
+
     //a title alone would say that something happened and not what
     @ParameterizedTest
     @ValueSource(strings = {"", "   ", "\n"})
