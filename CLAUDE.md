@@ -23,8 +23,10 @@ review.
   infos alike; the channel is configured by id.
 - `GET /home/notification/skippy?message=` sends a text by hand. It is deliberately **not**
   routed by `api-gateway-service`.
-- Uses libraries: `cholewa-commons` (1.7.0 since HAS-179). Of what the library
-  auto-configures, only the error handling is used: there is no database, and the English
+- Uses libraries: `cholewa-commons` (1.8.0 since HAS-206). Of what the library
+  auto-configures, the error handling and the name of the RabbitMQ connection are used (see
+  Specifics); its `NotificationPublisher` is opt-in and stays off — this service is the
+  consumer of the notifications. There is no database, and the English
   Bean Validation messages are on but have nothing to word — the only constraints sit on
   `DiscordBotConfig`, validated at startup, where the JVM locale still decides (the accepted
   exception of the org rule). No `smart-home-sdk`.
@@ -87,11 +89,21 @@ review.
 - **`.contextCapture()` is the last operator of the listener chain**, shared by both listeners, and has to stay there
   — Spring AMQP does not put the listener observation into the reactor context, so without it
   everything a message triggers is logged without a `traceId`.
-- **The RabbitMQ connection is named after the pod** (`RabbitConfig`, HAS-106): the broker shows
+- **The RabbitMQ connection is named after the pod** (HAS-106): the broker shows
   `notification-service-<pod id>`, which tells the old pod from the new one during a rollout.
-  `HOSTNAME` is taken only when it starts with `spring.application.name` — outside the cluster
-  it is missing, empty, a workstation or a container id, and the name is then
-  `notification-service-local`. The same convention holds in every service that talks to the broker.
+  `HOSTNAME` is taken only when it starts with `spring.application.name` and a dash — outside
+  the cluster it is missing, empty, a workstation or a container id, and the name is then
+  `notification-service-local`. **Since HAS-206 the service has no code for it**: the
+  `ConnectionNameStrategy` comes from `cholewa-commons` (`RabbitConnectionNameAutoConfiguration`,
+  bean `cholewaPodConnectionNameStrategy`, on by default) and Spring Boot hands it to the
+  connection factory it configures; `RabbitConfig` is gone. A `ConnectionNameStrategy` bean
+  declared here would silently replace the library's. `RabbitConnectionNameTest` pins what the
+  library cannot know — that in the context of this service its strategy is the one the
+  auto-configured `CachingConnectionFactory` holds, what the name is, and that no
+  `NotificationPublisher` exists.
 - **Surefire activates the `test` profile for every class**; that document excludes
   `RabbitAutoConfiguration`, so no test needs a broker, and switches the console logs back to
-  plain text.
+  plain text. `RabbitConnectionNameTest` puts the auto-configuration back for its own contexts
+  (`spring.autoconfigure.exclude=`), because the connection factory is its subject, and keeps
+  the listener containers from starting (`spring.rabbitmq.listener.simple.auto-startup=false`,
+  a broker address nothing listens on) — a context test that needs the factory copies both.
