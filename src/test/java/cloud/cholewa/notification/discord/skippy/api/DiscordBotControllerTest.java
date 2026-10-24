@@ -4,6 +4,8 @@ import cloud.cholewa.notification.discord.skippy.service.DiscordBotService;
 import cloud.cholewa.notification.household.HouseholdMessage;
 import cloud.cholewa.notification.model.NotificationLevel;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
@@ -113,30 +115,17 @@ class DiscordBotControllerTest {
         verify(discordBotService, never()).sendHouseholdMessage(any());
     }
 
-    @Test
-    void should_refuse_a_household_test_message_out_of_bounds() {
+    //an alert without its text, a household test message out of bounds or of an unknown event
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/skippy",
+        "/skippy?category=household&reminder=11",
+        "/skippy?category=household&subject=ab",
+        "/skippy?category=household&event=appliance exploded"
+    })
+    void should_refuse_a_request_it_cannot_send_with_400(final String uri) {
         webTestClient.get()
-            .uri("/skippy?category=household&reminder=11")
-            .exchange()
-            .expectStatus().isBadRequest();
-
-        verifyNoInteractions(discordBotService);
-    }
-
-    @Test
-    void should_refuse_an_unknown_household_event() {
-        webTestClient.get()
-            .uri("/skippy?category=household&event=appliance exploded")
-            .exchange()
-            .expectStatus().isBadRequest();
-
-        verifyNoInteractions(discordBotService);
-    }
-
-    @Test
-    void should_return_400_when_message_is_missing() {
-        webTestClient.get()
-            .uri("/skippy")
+            .uri(uri)
             .exchange()
             .expectStatus().isBadRequest();
 
