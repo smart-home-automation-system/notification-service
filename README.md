@@ -56,11 +56,11 @@ footer and the bar colored by the event:
 
 | Event | Text | Color |
 |---|---|---|
-| `appliance finished` | `<device> zakończyła pracę - wymaga opróżnienia.` | orange |
+| `appliance finished` | `Koniec pracy: <device> - wymaga opróżnienia.` | orange |
 | `appliance reminder` | `Przypomnienie <n>: <device> nadal czeka na opróżnienie.` | dark orange |
 | `appliance acknowledged` | `<device> - potwierdzone, dziękujemy.` | green |
 
-A household notification is delivered by every **transport**, one after the other
+A household notification is delivered by every **transport**, all at once
 (`HouseholdDispatcher`): Discord today, the SMS of SMSAPI and the Web Push to come (HAS-275,
 HAS-276). A transport that fails never fails the others; it is logged at ERROR with its name.
 

@@ -116,18 +116,26 @@ review.
   - **A third listener with a container of its own** (`consumeHouseholdMessage`), for the reasons
     of the two above. It acknowledges every message: a payload that is not the model, or breaks
     its bounds, is logged at ERROR (`InvalidHouseholdNotificationException`) - another delivery
-    would fail the same way; the dispatcher swallows what a transport failed.
+    would fail the same way; the dispatcher swallows what a transport failed. **The queue has to
+    exist**: Spring AMQP treats a missing queue as fatal for its container, so a broker without
+    `notification.<env>.household` (definitions before 1.4.0, HAS-273 - an old backup, a fresh
+    kind cluster) stops the start of the service, the local run on `notification.dev.household`
+    included.
   - **The words are composed here, never carried in the payload**, and they are the owner's call
     made on a real message (the lesson of HAS-94): `HouseholdMessages`, written out in
     `HouseholdMessagesTest`. The switch names every `HouseholdEvent` - a value added to the SDK
     stops the compiler there. The reminder says its number only: the payload does not carry how
-    many there will be. The subject is the device name of the registry, used as it comes (the
-    three appliances of the house are feminine in Polish - `zakończyła`).
-  - **Every transport is tried, one after the other, and a failed one fails nothing else**
-    (`HouseholdDispatcher`): logged at ERROR with the transport named, then the next. The message
-    is acknowledged once all were tried - handing it back would deliver it again by the
+    many there will be. The subject is the device name of the registry, used as it comes - Polish
+    of any gender or English - so **no sentence puts a gendered verb next to it** (`Koniec pracy:
+    <device> - ...`, the review of HAS-274: `Dishwasher zakończyła` read badly).
+  - **Every transport is tried, all at once, and a failed one fails nothing else**
+    (`HouseholdDispatcher`, `flatMap`): logged at ERROR with the transport named. At once and not
+    in series: Discord retrying for over a minute must not hold back the SMS and the push. The
+    message is acknowledged once all finished - handing it back would deliver it again by the
     transports that did succeed. A transport retries itself what another attempt can change: the
-    Discord one with `DiscordDeliveryRetry`, the policy the alerts use (extracted for it).
+    Discord one with `DiscordDeliveryRetry`, the policy the alerts use (extracted for it). **Its
+    warnings are logged under `DiscordDeliveryRetry` since HAS-274** (before:
+    `NotificationMessageService`) - no dashboard of deployment-tools filtered by the old name.
   - **The SMS and the push (HAS-275, HAS-276) are transports to add** - one `@Component`
     implementing `HouseholdTransport` each; the secret `notification` already gives them
     `vapid-private-key` and `smsapi-token`, the manifest `vapid-public-key` and `smsapi-sender`.
@@ -135,7 +143,9 @@ review.
     API token, not a sender name of the account - check the sender names of the account before
     HAS-275.
   - **`GET /skippy?category=household` posts to Discord only**, through `DiscordBotService`
-    directly - a smoke test must not send an SMS or wake a phone.
+    directly - a smoke test must not send an SMS or wake a phone. A mapping of its own
+    (`params = "category=household"`, the value as written): the alert call neither reads nor
+    checks the household parameters.
 - **Surefire activates the `test` profile for every class**; that document excludes
   `RabbitAutoConfiguration`, so no test needs a broker, and switches the console logs back to
   plain text. `RabbitConnectionNameTest` puts the auto-configuration back for its own contexts

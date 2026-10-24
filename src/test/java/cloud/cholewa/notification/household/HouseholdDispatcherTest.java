@@ -13,13 +13,14 @@ import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-//every transport tried, one after the other; a failed one never fails the others nor the message
+//every transport tried, all at once; a failed one never fails the others nor the message
 class HouseholdDispatcherTest {
 
     private static final HouseholdNotification NOTIFICATION = HouseholdNotification.builder()
@@ -42,14 +43,14 @@ class HouseholdDispatcherTest {
     }
 
     @Test
-    void should_deliver_the_worded_message_by_every_transport_in_order() {
+    void should_deliver_the_worded_message_by_every_transport() {
         final HouseholdDispatcher sut = new HouseholdDispatcher(List.of(working("discord"), working("sms")));
 
         sut.dispatch(NOTIFICATION).as(StepVerifier::create).verifyComplete();
 
         assertThat(delivered).containsExactly(
-            "discord: Zmywarka zakończyła pracę - wymaga opróżnienia.",
-            "sms: Zmywarka zakończyła pracę - wymaga opróżnienia.");
+            "discord: Koniec pracy: Zmywarka - wymaga opróżnienia.",
+            "sms: Koniec pracy: Zmywarka - wymaga opróżnienia.");
     }
 
     //a signalled error and one thrown while building the delivery alike
@@ -60,13 +61,38 @@ class HouseholdDispatcherTest {
 
         sut.dispatch(NOTIFICATION).as(StepVerifier::create).verifyComplete();
 
-        assertThat(delivered).containsExactly("sms: Zmywarka zakończyła pracę - wymaga opróżnienia.");
+        assertThat(delivered).containsExactly("sms: Koniec pracy: Zmywarka - wymaga opróżnienia.");
         assertThat(logs.list)
             .filteredOn(event -> event.getLevel() == Level.ERROR)
             .extracting(ILoggingEvent::getFormattedMessage)
             .containsExactly(
                 "Household notification [appliance finished] of [Zmywarka] not delivered by [discord]: IllegalStateException - down",
                 "Household notification [appliance finished] of [Zmywarka] not delivered by [push]: IllegalStateException - down");
+    }
+
+    //Discord retrying for a minute must not hold back the SMS: all at once, completed when all are
+    @Test
+    void should_not_let_a_slow_transport_hold_back_the_others() {
+        final HouseholdTransport slow = new HouseholdTransport() {
+            @Override
+            public String name() {
+                return "discord";
+            }
+
+            @Override
+            public Mono<Void> deliver(final HouseholdNotification notification, final HouseholdMessage message) {
+                return Mono.delay(Duration.ofMinutes(1)).then(Mono.fromRunnable(() -> delivered.add("discord")));
+            }
+        };
+
+        StepVerifier.withVirtualTime(() -> new HouseholdDispatcher(List.of(slow, working("sms"))).dispatch(NOTIFICATION))
+            .expectSubscription()
+            .then(() -> assertThat(delivered).containsExactly("sms: Koniec pracy: Zmywarka - wymaga opróżnienia."))
+            .expectNoEvent(Duration.ofSeconds(59))
+            .thenAwait(Duration.ofSeconds(1))
+            .verifyComplete();
+
+        assertThat(delivered).containsExactly("sms: Koniec pracy: Zmywarka - wymaga opróżnienia.", "discord");
     }
 
     @Test

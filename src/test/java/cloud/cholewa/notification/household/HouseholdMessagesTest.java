@@ -21,7 +21,7 @@ class HouseholdMessagesTest {
         final HouseholdMessage message = HouseholdMessages.of(notification(HouseholdEvent.APPLIANCE_FINISHED, 0));
 
         assertThat(message.title()).isEqualTo("Zmywarka");
-        assertThat(message.text()).isEqualTo("Zmywarka zakończyła pracę - wymaga opróżnienia.");
+        assertThat(message.text()).isEqualTo("Koniec pracy: Zmywarka - wymaga opróżnienia.");
         assertThat(message.footer()).isEqualTo("24.10.2026 19:05");
         assertThat(message.color()).isEqualTo(HouseholdMessages.FINISHED_COLOR);
     }

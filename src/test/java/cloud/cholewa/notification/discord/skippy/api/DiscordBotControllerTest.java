@@ -96,7 +96,31 @@ class DiscordBotControllerTest {
 
         final ArgumentCaptor<HouseholdMessage> sent = ArgumentCaptor.forClass(HouseholdMessage.class);
         verify(discordBotService).sendHouseholdMessage(sent.capture());
-        assertThat(sent.getValue().text()).isEqualTo("Zmywarka zakończyła pracę - wymaga opróżnienia.");
+        assertThat(sent.getValue().text()).isEqualTo("Koniec pracy: Zmywarka - wymaga opróżnienia.");
+    }
+
+    //the household parameters belong to the household mapping: an alert call is not checked against them
+    @Test
+    void should_send_an_alert_whatever_household_parameters_come_with_it() {
+        when(discordBotService.sendMessage(NotificationLevel.INFO, "test message")).thenReturn(Mono.empty());
+
+        webTestClient.get()
+            .uri("/skippy?message=test message&reminder=abc&subject=ab")
+            .exchange()
+            .expectStatus().isOk();
+
+        verify(discordBotService).sendMessage(NotificationLevel.INFO, "test message");
+        verify(discordBotService, never()).sendHouseholdMessage(any());
+    }
+
+    @Test
+    void should_refuse_a_household_test_message_out_of_bounds() {
+        webTestClient.get()
+            .uri("/skippy?category=household&reminder=11")
+            .exchange()
+            .expectStatus().isBadRequest();
+
+        verifyNoInteractions(discordBotService);
     }
 
     @Test

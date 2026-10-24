@@ -10,8 +10,6 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class NotificationMessageService {
 
-    static final long DELIVERY_RETRY_ATTEMPTS = DiscordDeliveryRetry.ATTEMPTS;
-
     private final DiscordBotService discordBotService;
 
     /**

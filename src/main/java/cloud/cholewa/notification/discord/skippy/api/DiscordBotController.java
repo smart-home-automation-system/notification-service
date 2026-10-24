@@ -23,38 +23,36 @@ import java.time.ZoneId;
 
 /**
  * Sends a message by hand - the smoke test through a port-forward; deliberately not routed by the
- * gateway. Without {@code category}, or with any other than {@code household}, the text goes to the
- * alerts channel as before. With {@code category=household} (HAS-274) a household notification of
- * a made-up device is worded as the household queue words one and posted to the household channel -
- * Discord only, never the SMS or the push of the household, which cost or wake somebody.
+ * gateway. Two mappings of one path: a text to the alerts channel, as always, and - with
+ * {@code category=household} (HAS-274) - a household notification of a made-up device, worded as
+ * the household queue words one and posted to the household channel. Apart, so that the
+ * parameters of one are neither read nor checked on a call of the other. Discord only, never the
+ * SMS or the push of the household, which cost or wake somebody.
  */
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("skippy")
 public class DiscordBotController {
 
-    static final String HOUSEHOLD = "household";
-
     private final DiscordBotService service;
 
     @GetMapping
     Mono<ResponseEntity<Void>> sendMessage(
-        @RequestParam(required = false) final String message,
-        @RequestParam(required = false) final String level,
-        @RequestParam(required = false) final String category,
+        @RequestParam final String message,
+        @RequestParam(required = false) final String level
+    ) {
+        return service.sendMessage(NotificationLevel.of(level, NotificationLevel.INFO), message)
+            .thenReturn(ResponseEntity.ok().build());
+    }
+
+    @GetMapping(params = "category=household")
+    Mono<ResponseEntity<Void>> sendHouseholdMessage(
         @RequestParam(defaultValue = "appliance finished") final String event,
         @RequestParam(defaultValue = "Zmywarka") @Size(min = 3, max = 50) final String subject,
         @RequestParam(defaultValue = "0") @Min(0) @Max(10) final int reminder
     ) {
-        if (HOUSEHOLD.equalsIgnoreCase(category)) {
-            return Mono.fromCallable(() -> HouseholdMessages.of(testNotification(event, subject, reminder)))
-                .flatMap(service::sendHouseholdMessage)
-                .thenReturn(ResponseEntity.ok().build());
-        }
-        if (message == null) {
-            return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "message is required"));
-        }
-        return service.sendMessage(NotificationLevel.of(level, NotificationLevel.INFO), message)
+        return Mono.fromCallable(() -> HouseholdMessages.of(testNotification(event, subject, reminder)))
+            .flatMap(service::sendHouseholdMessage)
             .thenReturn(ResponseEntity.ok().build());
     }
 

@@ -28,8 +28,9 @@ public final class HouseholdMessages {
         final String footer = notification.getOccurredAt().format(TIME_OF_THE_HOUSE);
 
         return switch (notification.getEvent()) {
+            //no verb that has a gender: the device name may be Polish of any gender, or English
             case APPLIANCE_FINISHED -> new HouseholdMessage(
-                subject, subject + " zakończyła pracę - wymaga opróżnienia.", footer, FINISHED_COLOR);
+                subject, "Koniec pracy: " + subject + " - wymaga opróżnienia.", footer, FINISHED_COLOR);
             //the payload carries the number of the reminder, not how many there will be
             case APPLIANCE_REMINDER -> new HouseholdMessage(
                 subject, "Przypomnienie " + notification.getReminder() + ": " + subject + " nadal czeka na opróżnienie.",
