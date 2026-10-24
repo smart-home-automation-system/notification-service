@@ -12,7 +12,7 @@
 
 ![GitHub top language](https://img.shields.io/github/languages/top/smart-home-automation-system/notification-service?style=plastic)
 ![Java](https://img.shields.io/badge/java-21-yellow?style=plastic)
-![SpringBoot](https://img.shields.io/badge/SpringBoot-4.1.1-blue?style=plastic)
+![SpringBoot](https://img.shields.io/badge/SpringBoot-4.1.2-blue?style=plastic)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=smart-home-automation-system_notification-service&metric=coverage)](https://sonarcloud.io/summary/new_code?id=smart-home-automation-system_notification-service)
 [![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=smart-home-automation-system_notification-service&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=smart-home-automation-system_notification-service)
 
@@ -46,6 +46,24 @@ does not start without it. The channel is deliberately not looked up by name: li
 channels makes discord4j decode every channel of the server, and one it cannot decode fails
 the delivery (0.3.0 delivered nothing for that reason).
 
+**The household category** (since 0.5.0, HAS-274) is for the people who live in the house, in
+Polish, on a Discord channel of its own (`discord.bot.skippy.household-channel-id`, environment
+variable `discord_household_channel_id`, mandatory like the alerts channel). Its payload is the
+JSON `HouseholdNotification` of `smart-home-sdk` 1.13.0 - what happened to which device, never a
+text: the words are composed here (`HouseholdMessages`), one embed per message with the device as
+the title, the sentence as the description, the time of the house (`dd.MM.yyyy HH:mm`) in the
+footer and the bar colored by the event:
+
+| Event | Text | Color |
+|---|---|---|
+| `appliance finished` | `<device> zakończyła pracę - wymaga opróżnienia.` | orange |
+| `appliance reminder` | `Przypomnienie <n>: <device> nadal czeka na opróżnienie.` | dark orange |
+| `appliance acknowledged` | `<device> - potwierdzone, dziękujemy.` | green |
+
+A household notification is delivered by every **transport**, one after the other
+(`HouseholdDispatcher`): Discord today, the SMS of SMSAPI and the Web Push to come (HAS-275,
+HAS-276). A transport that fails never fails the others; it is logged at ERROR with its name.
+
 # API
 
 Base path `/home/notification` (`spring.webflux.base-path`). The endpoint is not routed by
@@ -54,6 +72,7 @@ Base path `/home/notification` (`spring.webflux.base-path`). The endpoint is not
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/home/notification/skippy?message=<text>&level=<error\|warn\|info>` | Send `message` to the Discord `alerts` channel; `level` is optional and defaults to `info`. Returns `200 OK`; the `message` query parameter is required (`400 Bad Request` when missing); `502 Bad Gateway` when Discord refuses the request (a wrong channel id included). |
+| `GET` | `/home/notification/skippy?category=household&event=<event>&subject=<device>&reminder=<n>` | The smoke test of the household channel (since 0.5.0): a household notification of a made-up device, worded as the queue words one and posted to the household channel - **Discord only**, never the SMS or the push. `event` defaults to `appliance finished`, `subject` to `Zmywarka` (3-50 characters), `reminder` to `0` (0-10). `200 OK`; `400` for an unknown event or a bound broken; `502` when Discord refuses. |
 
 # Messaging
 
@@ -65,12 +84,13 @@ infrastructure — this service only consumes.
 |---|---|---|---|
 | `notification.prod.alert` / `notification.dev.alert` | `rabbit.alert.queue` | `String` (plain text), optional header `level` (default `error`) | `RabbitNotificationConsumer#consumeAlertMessage` |
 | `notification.prod.info` / `notification.dev.info` | `rabbit.info.queue` | `String` (plain text), optional header `level` (default `info`) | `RabbitNotificationConsumer#consumeInfoMessage` |
+| `notification.prod.household` / `notification.dev.household` | `rabbit.household.queue` | JSON `HouseholdNotification` (since 0.5.0); a payload that is not the model, or breaks its bounds, is logged at ERROR and acknowledged | `RabbitNotificationConsumer#consumeHouseholdMessage` |
 
 The `dev` queues are used in the `local` profile. Publishers send `text/plain`; the only one
 today is `heating-service`, which reports temperature sensors that stopped reporting.
 
-Each queue has a listener of its own; the two differ only in the default they give a message
-that names no `level` (or an unknown one). Both return `Mono<Void>` and delegate to
+Each queue has a listener of its own; alert and info differ only in the default they give a message
+that names no `level` (or an unknown one), household reads JSON and dispatches by every transport. Both return `Mono<Void>` and delegate to
 `NotificationMessageService#processMessage`, which posts the text on Discord and retries a
 failed delivery four times with a backoff starting at 5 s. Only what another attempt can change is retried: a
 5xx from Discord and network failures. A wrong channel id, a rejected token or a message
