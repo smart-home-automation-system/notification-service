@@ -1,5 +1,7 @@
 package cloud.cholewa.notification.rabbit;
 
+import cloud.cholewa.notification.household.HouseholdDispatcher;
+import cloud.cholewa.notification.household.HouseholdNotificationReader;
 import cloud.cholewa.notification.model.NotificationLevel;
 import cloud.cholewa.notification.service.NotificationMessageService;
 import lombok.RequiredArgsConstructor;
@@ -11,8 +13,8 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 /**
- * Two listeners on purpose, each with a container of its own - do not merge them into one on both
- * queues: one container only warns when one of its queues is missing and keeps consuming the
+ * One listener per queue on purpose (alert, info and, since HAS-274, household), each with a
+ * container of its own - do not merge them into one on several queues: one container only warns when one of its queues is missing and keeps consuming the
  * other, and what happens to the channel of one queue would redeliver the messages of both.
  */
 @Slf4j
@@ -23,6 +25,8 @@ public class RabbitNotificationConsumer {
     static final String LEVEL_HEADER = "level";
 
     private final NotificationMessageService notificationMessageService;
+    private final HouseholdNotificationReader householdNotificationReader;
+    private final HouseholdDispatcher householdDispatcher;
 
     @RabbitListener(queues = "${rabbit.alert.queue}")
     Mono<Void> consumeAlertMessage(
@@ -38,6 +42,28 @@ public class RabbitNotificationConsumer {
         @Header(name = LEVEL_HEADER, required = false) final String level
     ) {
         return consume(Category.INFO, message, level);
+    }
+
+    //The household category (HAS-274): a third listener with a container of its own, for the
+    //reasons above. Its payload is the JSON of HouseholdNotification, read here into the model and
+    //worded by the dispatcher, which tries every transport. A payload that is not the model is
+    //logged at ERROR and acknowledged - another delivery would fail the same way
+    @RabbitListener(queues = "${rabbit.household.queue}")
+    Mono<Void> consumeHouseholdMessage(@Payload final String message) {
+        return Mono.defer(() -> householdDispatcher.dispatch(householdNotificationReader.read(message)))
+            .doOnSubscribe(subscription -> log.info("Received household message: {}", message))
+            //the dispatcher swallows what a transport failed; what gets here is a payload that
+            //cannot be worded, or a fault of this service - never handed back to the broker
+            .onErrorResume(throwable -> {
+                log.error(
+                    "Household message not delivered: {} - {}: {}",
+                    message,
+                    throwable.getClass().getSimpleName(),
+                    throwable.getMessage()
+                );
+                return Mono.empty();
+            })
+            .contextCapture();
     }
 
     private Mono<Void> consume(final Category category, final String message, final String level) {

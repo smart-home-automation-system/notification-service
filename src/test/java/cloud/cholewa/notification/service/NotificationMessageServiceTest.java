@@ -177,6 +177,6 @@ class NotificationMessageServiceTest {
                 && throwable.getMessage().equals("connection reset 5"));
 
         //the first attempt and four retries
-        assertThat(attempts).hasValue((int) NotificationMessageService.DELIVERY_RETRY_ATTEMPTS + 1);
+        assertThat(attempts).hasValue((int) DiscordDeliveryRetry.ATTEMPTS + 1);
     }
 }

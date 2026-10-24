@@ -4,10 +4,15 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import cloud.cholewa.home.model.HouseholdNotification;
+import cloud.cholewa.notification.household.HouseholdDispatcher;
+import cloud.cholewa.notification.household.HouseholdNotificationReader;
+import cloud.cholewa.notification.household.InvalidHouseholdNotificationException;
 import cloud.cholewa.notification.model.NotificationLevel;
 import cloud.cholewa.notification.service.NotificationMessageService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -23,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.Answers.RETURNS_SMART_NULLS;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
@@ -32,8 +38,16 @@ class RabbitNotificationConsumerTest {
     private static final String ALERT = "alert";
     private static final String MESSAGE = "dummy message";
 
+    private static final String HOUSEHOLD = "{\"event\":\"appliance finished\",\"subject\":\"Zmywarka\"}";
+
     @Mock(answer = RETURNS_SMART_NULLS)
     private NotificationMessageService notificationMessageService;
+
+    @Mock
+    private HouseholdNotificationReader householdNotificationReader;
+
+    @Mock
+    private HouseholdDispatcher householdDispatcher;
 
     @InjectMocks
     private RabbitNotificationConsumer sut;
@@ -164,6 +178,62 @@ class RabbitNotificationConsumerTest {
             .filteredOn(event -> event.getLevel() == Level.ERROR)
             .extracting(ILoggingEvent::getFormattedMessage)
             .containsExactly(expectedLog);
+    }
+
+    //---- household (HAS-274): a listener of its own, the JSON read into the model ----
+
+    @Test
+    void should_listen_on_the_household_queue_with_a_listener_of_its_own() throws NoSuchMethodException {
+        final RabbitListener listener = RabbitNotificationConsumer.class
+            .getDeclaredMethod("consumeHouseholdMessage", String.class)
+            .getAnnotation(RabbitListener.class);
+
+        assertThat(listener.queues()).containsExactly("${rabbit.household.queue}");
+    }
+
+    @Test
+    void should_dispatch_the_household_notification_it_read() {
+        final HouseholdNotification notification = HouseholdNotification.builder().subject("Zmywarka").build();
+        when(householdNotificationReader.read(HOUSEHOLD)).thenReturn(notification);
+        when(householdDispatcher.dispatch(notification)).thenReturn(Mono.empty());
+
+        sut.consumeHouseholdMessage(HOUSEHOLD).as(StepVerifier::create).verifyComplete();
+
+        verify(householdDispatcher).dispatch(notification);
+        verifyNoInteractions(notificationMessageService);
+        assertThat(logs.list)
+            .extracting(ILoggingEvent::getLevel, ILoggingEvent::getFormattedMessage)
+            .containsExactly(tuple(Level.INFO, "Received household message: " + HOUSEHOLD));
+    }
+
+    //another delivery of a payload that is not the model would fail the same way: acknowledged, at ERROR
+    @Test
+    void should_complete_and_log_at_error_a_household_payload_that_is_not_the_model() {
+        when(householdNotificationReader.read("not json"))
+            .thenThrow(new InvalidHouseholdNotificationException("not a household notification: broken"));
+
+        sut.consumeHouseholdMessage("not json").as(StepVerifier::create).verifyComplete();
+
+        verifyNoInteractions(householdDispatcher);
+        assertThat(logs.list)
+            .filteredOn(event -> event.getLevel() == Level.ERROR)
+            .extracting(ILoggingEvent::getFormattedMessage)
+            .containsExactly("Household message not delivered: not json - InvalidHouseholdNotificationException: "
+                + "not a household notification: broken");
+    }
+
+    @Test
+    void should_complete_and_log_at_error_when_the_dispatch_fails() {
+        final HouseholdNotification notification = HouseholdNotification.builder().subject("Zmywarka").build();
+        when(householdNotificationReader.read(HOUSEHOLD)).thenReturn(notification);
+        when(householdDispatcher.dispatch(notification)).thenReturn(Mono.error(new IllegalStateException("broken")));
+
+        sut.consumeHouseholdMessage(HOUSEHOLD).as(StepVerifier::create).verifyComplete();
+
+        assertThat(logs.list)
+            .filteredOn(event -> event.getLevel() == Level.ERROR)
+            .extracting(ILoggingEvent::getFormattedMessage)
+            .containsExactly("Household message not delivered: " + HOUSEHOLD + " - IllegalStateException: broken");
     }
 
     private Mono<Void> consume(final String category, final String level) {

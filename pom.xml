@@ -5,7 +5,7 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>4.1.1</version>
+		<version>4.1.2</version>
 		<relativePath/>
 		<!-- lookup parent from a repository -->
 	</parent>
@@ -31,7 +31,8 @@
 		<mapstruct.version>1.6.3</mapstruct.version>
 
 		<!--  internal dependencies versions-->
-		<cholewa-commons.version>1.8.0</cholewa-commons.version>
+		<cholewa-commons.version>1.11.0</cholewa-commons.version>
+		<smart-home-sdk.version>1.13.0</smart-home-sdk.version>
 
 		<!--  plugins versions-->
 		<maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
@@ -46,6 +47,11 @@
 			<groupId>cloud.cholewa</groupId>
 			<artifactId>cholewa-commons</artifactId>
 			<version>${cholewa-commons.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>cloud.cholewa</groupId>
+			<artifactId>smart-home-sdk</artifactId>
+			<version>${smart-home-sdk.version}</version>
 		</dependency>
 
 		<dependency>

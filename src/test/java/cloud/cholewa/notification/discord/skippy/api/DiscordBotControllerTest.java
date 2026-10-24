@@ -1,8 +1,12 @@
 package cloud.cholewa.notification.discord.skippy.api;
 
 import cloud.cholewa.notification.discord.skippy.service.DiscordBotService;
+import cloud.cholewa.notification.household.HouseholdMessage;
 import cloud.cholewa.notification.model.NotificationLevel;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -10,6 +14,9 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import reactor.core.publisher.Mono;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -57,10 +64,68 @@ class DiscordBotControllerTest {
         verify(discordBotService).sendMessage(NotificationLevel.ERROR, "test message");
     }
 
+    //the smoke test of the household channel (HAS-274): worded as the queue words it, Discord only
     @Test
-    void should_return_400_when_message_is_missing() {
+    void should_post_a_household_test_message_to_the_household_channel() {
+        when(discordBotService.sendHouseholdMessage(any())).thenReturn(Mono.empty());
+
         webTestClient.get()
-            .uri("/skippy")
+            .uri(uriBuilder -> uriBuilder.path("/skippy")
+                .queryParam("category", "household")
+                .queryParam("event", "appliance reminder")
+                .queryParam("subject", "Pralka")
+                .queryParam("reminder", 2)
+                .build())
+            .exchange()
+            .expectStatus().isOk();
+
+        final ArgumentCaptor<HouseholdMessage> sent = ArgumentCaptor.forClass(HouseholdMessage.class);
+        verify(discordBotService).sendHouseholdMessage(sent.capture());
+        assertThat(sent.getValue().title()).isEqualTo("Pralka");
+        assertThat(sent.getValue().text()).isEqualTo("Przypomnienie 2: Pralka nadal czeka na opróżnienie.");
+        verify(discordBotService, never()).sendMessage(any(), any());
+    }
+
+    //without anything but the category: the dishwasher finished, as the task words it
+    @Test
+    void should_post_the_default_household_test_message() {
+        when(discordBotService.sendHouseholdMessage(any())).thenReturn(Mono.empty());
+
+        webTestClient.get()
+            .uri("/skippy?category=household")
+            .exchange()
+            .expectStatus().isOk();
+
+        final ArgumentCaptor<HouseholdMessage> sent = ArgumentCaptor.forClass(HouseholdMessage.class);
+        verify(discordBotService).sendHouseholdMessage(sent.capture());
+        assertThat(sent.getValue().text()).isEqualTo("Koniec pracy: Zmywarka - wymaga opróżnienia.");
+    }
+
+    //the household parameters belong to the household mapping: an alert call is not checked against them
+    @Test
+    void should_send_an_alert_whatever_household_parameters_come_with_it() {
+        when(discordBotService.sendMessage(NotificationLevel.INFO, "test message")).thenReturn(Mono.empty());
+
+        webTestClient.get()
+            .uri("/skippy?message=test message&reminder=abc&subject=ab")
+            .exchange()
+            .expectStatus().isOk();
+
+        verify(discordBotService).sendMessage(NotificationLevel.INFO, "test message");
+        verify(discordBotService, never()).sendHouseholdMessage(any());
+    }
+
+    //an alert without its text, a household test message out of bounds or of an unknown event
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/skippy",
+        "/skippy?category=household&reminder=11",
+        "/skippy?category=household&subject=ab",
+        "/skippy?category=household&event=appliance exploded"
+    })
+    void should_refuse_a_request_it_cannot_send_with_400(final String uri) {
+        webTestClient.get()
+            .uri(uri)
             .exchange()
             .expectStatus().isBadRequest();
 
