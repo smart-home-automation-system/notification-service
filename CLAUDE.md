@@ -24,18 +24,22 @@ review.
   the JSON `HouseholdNotification` of `smart-home-sdk` 1.13.0, read with the `JsonMapper` of
   Spring Boot into the model and validated (`HouseholdNotificationReader`), worded in Polish
   here (`HouseholdMessages`) and delivered by every `HouseholdTransport` (`HouseholdDispatcher`).
-  Publisher to come: `appliance-service`.
+  Publisher: `appliance-service` (since its 0.3.0).
 - Calls: the Discord REST API. Alerts and infos go to the text channel `alerts`, the household
-  category to a channel of its own; both are configured by id.
+  category to a channel of its own; both are configured by id. **Since HAS-276 also**, for the
+  Web Push of the household category: `presence-service` (`GET /home/presence/residents/presence`)
+  and `database-service` (`GET` / `DELETE /home/push-subscriptions`) over k8s DNS
+  (`internal.service.*`), and the push services of `household.push.allowed-hosts`.
 - `GET /home/notification/skippy?message=` sends a text by hand, and `?category=household` a
   household test message to the household channel (Discord only). It is deliberately **not**
   routed by `api-gateway-service`.
 - Uses libraries: `smart-home-sdk` 1.13.0 (the household models, since HAS-274) and
-  `cholewa-commons` (1.11.0 since HAS-274; 1.8.0 since HAS-206 before - this service has no
-  `WebClient`, no own `LogbookClientHandler` and no `@Scheduled` task, so 1.10.0 / 1.11.0 needed
-  no code here). Of what the library
-  auto-configures, the error handling and the name of the RabbitMQ connection are used (see
-  Specifics); its `NotificationPublisher` is opt-in and stays off — this service is the
+  `cholewa-commons` (1.12.0 since HAS-276; 1.11.0 since HAS-274). The `WebClient`s of the push
+  transport are built from the injected builder, so the Logbook filter of the library logs them
+  with the `traceId` - there is no own `LogbookClientHandler`, and none may be added (every call
+  would be logged twice); there is no `@Scheduled` task. Of what the library
+  auto-configures, the error handling, `DownstreamErrors` and the name of the RabbitMQ connection
+  are used (see Specifics); its `NotificationPublisher` is opt-in and stays off — this service is the
   consumer of the notifications. There is no database. The English Bean Validation messages
   word the constraints of a household payload that breaks the model (they go to the log) and
   of `DiscordBotConfig`, validated at startup, where the JVM locale still decides (the accepted
@@ -136,12 +140,49 @@ review.
     Discord one with `DiscordDeliveryRetry`, the policy the alerts use (extracted for it). **Its
     warnings are logged under `DiscordDeliveryRetry` since HAS-274** (before:
     `NotificationMessageService`) - no dashboard of deployment-tools filtered by the old name.
-  - **The SMS and the push (HAS-275, HAS-276) are transports to add** - one `@Component`
-    implementing `HouseholdTransport` each; the secret `notification` already gives them
-    `vapid-private-key` and `smsapi-token`, the manifest `vapid-public-key` and `smsapi-sender`.
-    The sender `smart-home` was refused by SMSAPI on 2026-10-24 (error 14): it is the name of the
-    API token, not a sender name of the account - check the sender names of the account before
-    HAS-275.
+  - **The SMS (HAS-275) is a transport to add** - one `@Component` implementing
+    `HouseholdTransport`; the secret `notification` gives it `smsapi-token`, the manifest
+    `smsapi-sender`. The sender `smart-home` was refused by SMSAPI on 2026-10-24 (error 14): it is
+    the name of the API token, not a sender name of the account - check the sender names of the
+    account before HAS-275. Who is at home it can take from `PresentMembersClient` of the push.
+  - **The Web Push (HAS-276, package `household.push`)** - what is easy to break:
+    - **Only with `household.push.enabled`** (`WebPushConfig`, `@ConditionalOnBooleanProperty`):
+      without it there is no push transport, no `WebClient` and no `internal.service` binding. On
+      in the shared document, off in `local` (`PUSH_ENABLED=true` switches it on) and in `test`.
+      With it on, the start fails on a missing or unreadable key, a public key of another pair
+      (`VapidPair`: a signature of the private key checked with the public one - the JDK computes
+      no public key) or a subject that is not `mailto:` / `https:` without quotes. The manifest
+      needs `push-subject` besides the two VAPID variables.
+    - **The JDK does all the cryptography** - no library: `WebPushEncryptor` (RFC 8291 /
+      `aes128gcm`, one record, a new key pair and salt each message) is pinned by the test vector
+      of RFC 8291 and by a decryption written apart in its test; `VapidSigner` signs ES256 in the
+      P1363 form a JWT takes (`SHA256withECDSAinP1363Format`, not the DER of `SHA256withECDSA`),
+      `aud` is the origin without user info or the default port, `k=` the public key re-encoded
+      unpadded. The work runs on the parallel scheduler, off the event loop.
+    - **Who gets it**: the members present by `presence-service`, 20 names a read of
+      `database-service` (its bound), a name with a comma left out (the read splits on commas).
+      Nobody at home completes; a failed read fails the transport and no push goes out - **never
+      a push to everybody instead**. The transport fails only when there was a browser to reach
+      and none took the message; the dispatcher then logs it at ERROR.
+    - **Only the push services of `household.push.allowed-hosts`** (a host equal or below one, https
+      only): the registry takes any https endpoint a browser gives, and this list is what keeps
+      the service from posting anywhere else. A skipped subscription is logged by its host.
+    - **404 / 410 removes the subscription** (`DELETE /home/push-subscriptions?endpoint=` of
+      `database-service` >= 0.19.0); a removal that fails is a WARN, and the next message that finds
+      it tries again. Any other answer - 429 and 5xx included - fails that browser for this
+      message; nothing is retried (the next reminder is the next attempt, Discord has the message).
+    - **The payload is the shape the service worker of Angular shows by itself**
+      (`{"notification": {...}}`, `data.onActionClick.default`) - the application (HAS-284) needs
+      no worker of its own; the Jira text named `{title, body, path, tag}`, which are all inside.
+      `tag` and `Topic` are `appliance-<deviceId>`; `renotify` is off for the acknowledgement, which
+      replaces the notification without a sound.
+    - **A subscription is never logged**: the endpoint is an address anybody could post to that
+      browser with. The calls to the push services are kept out of Logbook by
+      `logbook.client.predicate.exclude` (a glob on the whole URL) - **a new allowed host needs its
+      line there too**. The read and the removal of `database-service` are logged at trace with the
+      rest (the accepted rule of the organization).
+    - **Logged as "delivered by [push]" also when nobody was at home** - the transport completed;
+      the INFO line before it says that nobody was.
   - **`GET /skippy?category=household` posts to Discord only**, through `DiscordBotService`
     directly - a smoke test must not send an SMS or wake a phone. A mapping of its own
     (`params = "category=household"`, the value as written): the alert call neither reads nor
