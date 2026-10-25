@@ -62,14 +62,14 @@ class WebPushHouseholdTransportTest {
     void should_push_to_every_browser_of_the_members_at_home() {
         when(presentMembers.present()).thenReturn(Mono.just(List.of("Ola", "Jan")));
         when(subscriptions.ofMembers(List.of("Ola", "Jan"))).thenReturn(Mono.just(List.of(subscription(APPLE), subscription(GOOGLE))));
-        when(sender.send(any(), any(), any(), eq("appliance-133"))).thenReturn(Mono.just(WebPushSender.Outcome.DELIVERED));
+        when(sender.send(any(), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.DELIVERED));
 
         sut.deliver(FINISHED, MESSAGE)
             .as(StepVerifier::create)
             .verifyComplete();
 
         final ArgumentCaptor<URI> endpoints = ArgumentCaptor.forClass(URI.class);
-        verify(sender, org.mockito.Mockito.times(2)).send(endpoints.capture(), any(), any(), eq("appliance-133"));
+        verify(sender, org.mockito.Mockito.times(2)).send(endpoints.capture(), any(), any());
         assertThat(endpoints.getAllValues()).extracting(URI::toString).containsExactlyInAnyOrder(APPLE, GOOGLE);
     }
 
@@ -78,12 +78,12 @@ class WebPushHouseholdTransportTest {
     void should_send_the_words_of_the_household_message_with_the_page_to_open() {
         when(presentMembers.present()).thenReturn(Mono.just(List.of("Ola")));
         when(subscriptions.ofMembers(any())).thenReturn(Mono.just(List.of(subscription(APPLE))));
-        when(sender.send(any(), any(), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.DELIVERED));
+        when(sender.send(any(), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.DELIVERED));
 
         sut.deliver(FINISHED, MESSAGE).as(StepVerifier::create).verifyComplete();
 
         final ArgumentCaptor<byte[]> payload = ArgumentCaptor.forClass(byte[].class);
-        verify(sender).send(any(), any(), payload.capture(), any());
+        verify(sender).send(any(), any(), payload.capture());
         final JsonNode shown = jsonMapper.readTree(payload.getValue()).get("notification");
         assertThat(shown.get("title").asString()).isEqualTo("Dishwasher");
         assertThat(shown.get("body").asString()).isEqualTo("Koniec pracy: Dishwasher - wymaga opróżnienia.");
@@ -153,14 +153,14 @@ class WebPushHouseholdTransportTest {
             subscription("https://push.apple.com.evil.example.com/x"),
             subscription("http://web.push.apple.com/plain"),
             subscription(APPLE))));
-        when(sender.send(any(), any(), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.DELIVERED));
+        when(sender.send(any(), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.DELIVERED));
 
         sut.deliver(FINISHED, MESSAGE)
             .as(StepVerifier::create)
             .verifyComplete();
 
         final ArgumentCaptor<URI> endpoints = ArgumentCaptor.forClass(URI.class);
-        verify(sender).send(endpoints.capture(), any(), any(), any());
+        verify(sender).send(endpoints.capture(), any(), any());
         assertThat(endpoints.getValue()).hasToString(APPLE);
     }
 
@@ -168,8 +168,8 @@ class WebPushHouseholdTransportTest {
     void should_remove_a_subscription_the_push_service_dropped_and_still_count_the_others() {
         when(presentMembers.present()).thenReturn(Mono.just(List.of("Ola")));
         when(subscriptions.ofMembers(any())).thenReturn(Mono.just(List.of(subscription(APPLE), subscription(GOOGLE))));
-        when(sender.send(eq(URI.create(APPLE)), any(), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.GONE));
-        when(sender.send(eq(URI.create(GOOGLE)), any(), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.DELIVERED));
+        when(sender.send(eq(URI.create(APPLE)), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.GONE));
+        when(sender.send(eq(URI.create(GOOGLE)), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.DELIVERED));
         when(subscriptions.remove(APPLE)).thenReturn(Mono.empty());
 
         sut.deliver(FINISHED, MESSAGE)
@@ -185,7 +185,7 @@ class WebPushHouseholdTransportTest {
     void should_not_fail_the_message_when_the_removal_of_a_dropped_subscription_fails() {
         when(presentMembers.present()).thenReturn(Mono.just(List.of("Ola")));
         when(subscriptions.ofMembers(any())).thenReturn(Mono.just(List.of(subscription(APPLE))));
-        when(sender.send(any(), any(), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.GONE));
+        when(sender.send(any(), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.GONE));
         when(subscriptions.remove(APPLE)).thenReturn(Mono.error(new IllegalStateException("database-service answered 500")));
 
         sut.deliver(FINISHED, MESSAGE)
@@ -197,7 +197,7 @@ class WebPushHouseholdTransportTest {
     void should_fail_when_no_browser_at_home_took_the_message() {
         when(presentMembers.present()).thenReturn(Mono.just(List.of("Ola")));
         when(subscriptions.ofMembers(any())).thenReturn(Mono.just(List.of(subscription(APPLE), subscription(GOOGLE))));
-        when(sender.send(any(), any(), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.FAILED));
+        when(sender.send(any(), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.FAILED));
 
         sut.deliver(FINISHED, MESSAGE)
             .as(StepVerifier::create)
@@ -209,8 +209,8 @@ class WebPushHouseholdTransportTest {
     void should_be_done_when_one_browser_took_it_and_another_failed() {
         when(presentMembers.present()).thenReturn(Mono.just(List.of("Ola")));
         when(subscriptions.ofMembers(any())).thenReturn(Mono.just(List.of(subscription(APPLE), subscription(GOOGLE))));
-        when(sender.send(eq(URI.create(APPLE)), any(), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.FAILED));
-        when(sender.send(eq(URI.create(GOOGLE)), any(), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.DELIVERED));
+        when(sender.send(eq(URI.create(APPLE)), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.FAILED));
+        when(sender.send(eq(URI.create(GOOGLE)), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.DELIVERED));
 
         sut.deliver(FINISHED, MESSAGE)
             .as(StepVerifier::create)
@@ -251,13 +251,13 @@ class WebPushHouseholdTransportTest {
         when(presentMembers.present()).thenReturn(Mono.just(members));
         when(subscriptions.ofMembers(members.subList(0, 20))).thenReturn(Mono.just(List.of(subscription(APPLE))));
         when(subscriptions.ofMembers(members.subList(20, 21))).thenReturn(Mono.just(List.of(subscription(GOOGLE))));
-        when(sender.send(any(), any(), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.DELIVERED));
+        when(sender.send(any(), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.DELIVERED));
 
         sut.deliver(FINISHED, MESSAGE)
             .as(StepVerifier::create)
             .verifyComplete();
 
-        verify(sender, org.mockito.Mockito.times(2)).send(any(), any(), any(), any());
+        verify(sender, org.mockito.Mockito.times(2)).send(any(), any(), any());
     }
 
     private JsonNode shown(final HouseholdNotification notification) {

@@ -66,7 +66,7 @@ class WebPushSenderTest {
     void should_post_the_encrypted_message_with_the_headers_of_web_push() throws InterruptedException {
         server.enqueue(new MockResponse.Builder().code(201).build());
 
-        sut.send(endpoint(), subscription, PAYLOAD, "appliance-133")
+        sut.send(endpoint(), subscription, PAYLOAD)
             .as(StepVerifier::create)
             .expectNext(WebPushSender.Outcome.DELIVERED)
             .verifyComplete();
@@ -76,7 +76,9 @@ class WebPushSenderTest {
         assertThat(request.getUrl().encodedPath()).isEqualTo("/push/abc");
         assertThat(request.getHeaders().get("TTL")).isEqualTo("3600");
         assertThat(request.getHeaders().get("Urgency")).isEqualTo("high");
-        assertThat(request.getHeaders().get("Topic")).isEqualTo("appliance-133");
+        // no Topic: Apple refuses ours with 400 BadWebPushTopic (HAS-276, the first real push) - the tag of
+        // the payload replaces the notification on the phone all the same
+        assertThat(request.getHeaders().get("Topic")).isNull();
         assertThat(request.getHeaders().get("Content-Encoding")).isEqualTo("aes128gcm");
         assertThat(request.getHeaders().get("Content-Type")).isEqualTo("application/octet-stream");
         assertThat(request.getHeaders().get("Authorization")).startsWith("vapid t=").contains(", k=");
@@ -90,7 +92,7 @@ class WebPushSenderTest {
     void should_tell_a_subscription_the_push_service_dropped(final int status) {
         server.enqueue(new MockResponse.Builder().code(status).build());
 
-        sut.send(endpoint(), subscription, PAYLOAD, "appliance-133")
+        sut.send(endpoint(), subscription, PAYLOAD)
             .as(StepVerifier::create)
             .expectNext(WebPushSender.Outcome.GONE)
             .verifyComplete();
@@ -101,7 +103,7 @@ class WebPushSenderTest {
     void should_tell_any_other_answer_as_failed_for_this_time(final int status) {
         server.enqueue(new MockResponse.Builder().code(status).build());
 
-        sut.send(endpoint(), subscription, PAYLOAD, "appliance-133")
+        sut.send(endpoint(), subscription, PAYLOAD)
             .as(StepVerifier::create)
             .expectNext(WebPushSender.Outcome.FAILED)
             .verifyComplete();
@@ -112,7 +114,7 @@ class WebPushSenderTest {
     void should_log_what_the_push_service_gave_as_the_reason_of_a_refusal(final CapturedOutput output) {
         server.enqueue(new MockResponse.Builder().code(400).body("{\"reason\":\"BadWebPushTopic\"}").build());
 
-        sut.send(endpoint(), subscription, PAYLOAD, "appliance-133")
+        sut.send(endpoint(), subscription, PAYLOAD)
             .as(StepVerifier::create)
             .expectNext(WebPushSender.Outcome.FAILED)
             .verifyComplete();
@@ -126,7 +128,7 @@ class WebPushSenderTest {
     void should_tell_a_refusal_with_a_body_it_cannot_read_by_its_status() {
         server.enqueue(new MockResponse.Builder().code(500).body("x".repeat(300_000)).build());
 
-        sut.send(endpoint(), subscription, PAYLOAD, "appliance-133")
+        sut.send(endpoint(), subscription, PAYLOAD)
             .as(StepVerifier::create)
             .expectNext(WebPushSender.Outcome.FAILED)
             .verifyComplete();
@@ -147,7 +149,7 @@ class WebPushSenderTest {
             .keys(PushSubscriptionKeys.builder().p256dh("BAAA").auth("AAAA").build())
             .build();
 
-        sut.send(endpoint(), broken, PAYLOAD, "appliance-133")
+        sut.send(endpoint(), broken, PAYLOAD)
             .as(StepVerifier::create)
             .expectNext(WebPushSender.Outcome.FAILED)
             .verifyComplete();
@@ -159,7 +161,7 @@ class WebPushSenderTest {
     void should_fail_a_push_service_that_is_not_there() {
         final URI nowhere = URI.create("http://localhost:1/push/abc");
 
-        sut.send(nowhere, subscription, PAYLOAD, "appliance-133")
+        sut.send(nowhere, subscription, PAYLOAD)
             .as(StepVerifier::create)
             .expectNext(WebPushSender.Outcome.FAILED)
             .verifyComplete();

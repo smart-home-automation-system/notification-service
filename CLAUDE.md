@@ -174,7 +174,9 @@ review.
     - **The payload is the shape the service worker of Angular shows by itself**
       (`{"notification": {...}}`, `data.onActionClick.default`) - the application (HAS-284) needs
       no worker of its own; the Jira text named `{title, body, path, tag}`, which are all inside.
-      `tag` and `Topic` are `appliance-<deviceId>`; `renotify` is off for the acknowledgement, which
+      `tag` is `appliance-<deviceId>` - **no `Topic` header**: Apple answered our `appliance-133` with
+      400 `BadWebPushTopic` on the first real push (0.6.1 logs the reason of a refusal, which showed it);
+      the tag still replaces the notification on the phone. `renotify` is off for the acknowledgement, which
       replaces the notification without a sound.
     - **A subscription is never logged**: the endpoint is an address anybody could post to that
       browser with. The calls to the push services are kept out of Logbook by
