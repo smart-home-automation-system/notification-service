@@ -29,6 +29,8 @@ import java.time.Duration;
 class WebPushSender {
 
     static final Duration TIMEOUT = Duration.ofSeconds(15);
+    // the reason of a refusal in the log: enough for a sentence, never a page
+    static final int REASON_LENGTH = 200;
 
     private final WebClient pushWebClient;
     private final WebPushEncryptor encryptor;
@@ -74,7 +76,14 @@ class WebPushSender {
                     .header(HttpHeaders.CONTENT_ENCODING, "aes128gcm")
                     .contentType(MediaType.APPLICATION_OCTET_STREAM)
                     .bodyValue(body)
-                    .exchangeToMono(response -> response.releaseBody().thenReturn(outcomeOf(response.statusCode().value(), host)))
+                    .exchangeToMono(response -> response.statusCode().is2xxSuccessful()
+                        ? response.releaseBody().thenReturn(Outcome.DELIVERED)
+                        //a refusal says why in its body (Apple: {"reason":"BadJwtToken"}) - read for the log
+                        : response.bodyToMono(String.class)
+                            // a body that cannot be read (too big, not text) is no reason - and the status still counts
+                            .onErrorReturn("")
+                            .defaultIfEmpty("")
+                            .map(refusal -> outcomeOf(response.statusCode().value(), host, reasonOf(refusal))))
                     .timeout(TIMEOUT);
             })
             //the key pair, the ECDH and the signature are CPU work of a few milliseconds: on the parallel
@@ -87,15 +96,25 @@ class WebPushSender {
             });
     }
 
-    private static Outcome outcomeOf(final int status, final String host) {
-        if (status >= 200 && status < 300) {
-            return Outcome.DELIVERED;
-        }
+    private static Outcome outcomeOf(final int status, final String host, final String reason) {
         if (status == HttpStatus.NOT_FOUND.value() || status == HttpStatus.GONE.value()) {
-            log.info("The push service on [{}] answered {}: the subscription is gone", host, status);
+            log.info("The push service on [{}] answered {}: the subscription is gone - {}", host, status, reason);
             return Outcome.GONE;
         }
-        log.warn("The push service on [{}] answered {} to a push message", host, status);
+        log.warn("The push service on [{}] answered {} to a push message: {}", host, status, reason);
         return Outcome.FAILED;
+    }
+
+    /**
+     * What a push service says when it refuses, for the log: the beginning of its body, on one line. It
+     * names the cause (Apple: {@code {"reason":"BadWebPushTopic"}}, Google and Mozilla a sentence) and
+     * holds neither the address of the subscription nor a key - those are in the request, never logged.
+     */
+    static String reasonOf(final String body) {
+        final String line = body.replaceAll("\\s+", " ").strip();
+        if (line.isEmpty()) {
+            return "no reason given";
+        }
+        return line.length() <= REASON_LENGTH ? line : line.substring(0, REASON_LENGTH) + "...";
     }
 }
