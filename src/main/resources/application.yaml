@@ -49,6 +49,15 @@ management:
 logbook:
   format:
     style: json
+  # a call to a push service is never logged: its address is the subscription itself - anybody holding
+  # it could post to that browser - and the body is ciphertext (HAS-276)
+  client:
+    predicate:
+      exclude:
+        - path: "https://*.push.apple.com/**"
+        - path: "https://fcm.googleapis.com/**"
+        - path: "https://*.push.services.mozilla.com/**"
+        - path: "https://*.notify.windows.com/**"
 
 logging:
   structured:
@@ -56,6 +65,40 @@ logging:
       console: logstash
   level:
     org.zalando.logbook: trace
+
+# the household category by Web Push (HAS-276): the members at home, each of their browsers that
+# subscribed in the installed application. The keys come from the manifest (the private one from the
+# secret 'notification'); the service checks at the start that they are one pair
+household:
+  push:
+    enabled: true
+    # who the push services may write to about this sender - the owner's address, from the manifest
+    subject: ${push-subject:}
+    public-key: ${vapid-public-key:}
+    private-key: ${vapid-private-key:}
+    # how long a push service keeps a message for a phone that is off: an hour, like the queue
+    ttl: 60
+    # the push services the browsers of the household subscribe at: Apple (Safari, the iPhones), Google
+    # (Chrome), Mozilla, Microsoft. A host below one of these is taken; anything else is never posted to
+    allowed-hosts:
+      - push.apple.com
+      - fcm.googleapis.com
+      - push.services.mozilla.com
+      - notify.windows.com
+
+# the services this one calls inside the cluster, over k8s DNS. A bare number of a timeout is seconds
+internal:
+  service:
+    # who of the household is at home
+    presence:
+      url: http://presence-service:6200
+      connect-timeout: 3s
+      response-timeout: 5s
+    # the push subscriptions of their browsers
+    database:
+      url: http://database-service:6200
+      connect-timeout: 3s
+      response-timeout: 5s
 
 rabbit:
   alert:
@@ -107,6 +150,12 @@ rabbit:
   household:
     queue: notification.dev.household
 
+# a local run posts no push unless asked to: the keys and the subject are the production ones, from
+# the manifest - switch it on with PUSH_ENABLED=true and the variables of household.push
+household:
+  push:
+    enabled: ${push-enabled:false}
+
 ---
 
 spring:
@@ -130,3 +179,8 @@ logging:
   structured:
     format:
       console: ""
+
+household:
+  push:
+    # no push in the tests: a test that wants the transport switches it on with keys of its own
+    enabled: false

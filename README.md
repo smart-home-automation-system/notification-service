@@ -61,8 +61,33 @@ footer and the bar colored by the event:
 | `appliance acknowledged` | `<device> - potwierdzone, dziękujemy.` | green |
 
 A household notification is delivered by every **transport**, all at once
-(`HouseholdDispatcher`): Discord today, the SMS of SMSAPI and the Web Push to come (HAS-275,
-HAS-276). A transport that fails never fails the others; it is logged at ERROR with its name.
+(`HouseholdDispatcher`): Discord, **Web Push** (since HAS-276) and the SMS of SMSAPI to come
+(HAS-275). A transport that fails never fails the others; it is logged at ERROR with its name.
+
+**Web Push** (HAS-276) puts the same words on the phones of the members at home, as a
+notification of the installed application, also while it is closed (iOS 16.4+, the application
+on the home screen, permission granted - the subscription is made by the application, HAS-284):
+
+- **Who**: the members `presence-service` says are at home (`GET /home/presence/residents/presence`),
+  each of their browsers that subscribed (`GET /home/push-subscriptions?members=` of
+  `database-service`, 20 names a read). Nobody at home is no failure - the Discord channel has
+  the message; a presence or database read that fails is, and then no push goes out at all.
+- **What**: `{"notification": {title, body, tag, renotify, data}}` - the shape the service worker
+  of Angular shows by itself; a tap opens `data.onActionClick.default.url`, the page where the
+  household acknowledges (`acknowledgePath` of the payload, `/` without one). `tag` is
+  `appliance-<deviceId>`, so a reminder replaces the notification of the same appliance, and the
+  acknowledgement replaces it without a sound (`renotify: false`).
+- **How**: encrypted per browser by RFC 8291 (`aes128gcm`) and signed by VAPID (RFC 8292), with
+  the JDK alone (`WebPushEncryptor`, `VapidSigner`); posted with `TTL` (an hour), `Urgency: high`
+  and `Topic` (the tag). Only hosts of `household.push.allowed-hosts` are posted to (Apple, Google,
+  Mozilla, Microsoft); a subscription elsewhere is skipped and logged by its host.
+- **A dropped subscription** (404 or 410 from the push service) is removed through
+  `DELETE /home/push-subscriptions?endpoint=` of `database-service` (0.19.0).
+- **Configuration**: `household.push.enabled` (on in the shared document, off locally and in
+  the tests), `household.push.subject` (environment variable `push-subject`, a `mailto:` or
+  `https:` address), the VAPID pair `vapid-public-key` / `vapid-private-key` (base64url, as
+  `web-push generate-vapid-keys` prints it). The service refuses to start with push on and a
+  key, the pair or the subject wrong.
 
 # API
 
