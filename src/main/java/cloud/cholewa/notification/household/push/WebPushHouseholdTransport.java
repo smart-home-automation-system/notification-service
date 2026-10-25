@@ -86,11 +86,10 @@ class WebPushHouseholdTransport implements HouseholdTransport {
         final HouseholdMessage message
     ) {
         final byte[] payload = PushPayload.of(notification, message, jsonMapper);
-        final String topic = PushPayload.tagOf(notification);
 
         return Flux.fromIterable(found)
             .flatMap(subscription -> allowedEndpoint(subscription)
-                .map(endpoint -> sender.send(endpoint, subscription, payload, topic)
+                .map(endpoint -> sender.send(endpoint, subscription, payload)
                     .flatMap(outcome -> outcome == WebPushSender.Outcome.GONE
                         ? removeGone(subscription).thenReturn(outcome)
                         : Mono.just(outcome)))

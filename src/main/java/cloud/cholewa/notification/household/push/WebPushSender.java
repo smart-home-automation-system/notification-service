@@ -16,9 +16,10 @@ import java.time.Duration;
 /**
  * Posts one encrypted message to the push service of one browser (RFC 8030): the body of
  * {@link WebPushEncryptor}, the token of {@link VapidSigner}, {@code TTL} of the configuration,
- * {@code Urgency: high} (an appliance waits for somebody now), and {@code Topic} - the tag of the
- * appliance, so a push service holding an undelivered message for a phone that is off replaces it with
- * the newer one.
+ * and {@code Urgency: high} (an appliance waits for somebody now). **No {@code Topic}**: Apple refused
+ * ours ({@code appliance-133}, valid by RFC 8030) with 400 {@code BadWebPushTopic} on the first real push
+ * (HAS-276). The {@code tag} of the payload still replaces the notification of the same appliance on
+ * the phone; only a push service holding several for a phone that is off delivers them all.
  * <p>
  * What it came to is an {@link Outcome}, never an error: 201 (or any 2xx) delivered, 404 and 410 a
  * subscription the push service dropped for good, anything else - a refusal, a 429, a 5xx, no answer -
@@ -52,7 +53,7 @@ class WebPushSender {
     enum Outcome { DELIVERED, GONE, FAILED }
 
     //the endpoint as the transport parsed it and checked against the allowed hosts
-    Mono<Outcome> send(final URI endpoint, final PushSubscription subscription, final byte[] payload, final String topic) {
+    Mono<Outcome> send(final URI endpoint, final PushSubscription subscription, final byte[] payload) {
         final String host = endpoint.getHost();
         //deferred: the encryption and the token throw on keys a browser gave wrong - that is this
         //subscription failing, never the message
@@ -72,7 +73,6 @@ class WebPushSender {
                     .header(HttpHeaders.AUTHORIZATION, authorization)
                     .header("TTL", String.valueOf(ttl.toSeconds()))
                     .header("Urgency", "high")
-                    .header("Topic", topic)
                     .header(HttpHeaders.CONTENT_ENCODING, "aes128gcm")
                     .contentType(MediaType.APPLICATION_OCTET_STREAM)
                     .bodyValue(body)

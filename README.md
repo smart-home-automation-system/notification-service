@@ -78,8 +78,9 @@ on the home screen, permission granted - the subscription is made by the applica
   `appliance-<deviceId>`, so a reminder replaces the notification of the same appliance, and the
   acknowledgement replaces it without a sound (`renotify: false`).
 - **How**: encrypted per browser by RFC 8291 (`aes128gcm`) and signed by VAPID (RFC 8292), with
-  the JDK alone (`WebPushEncryptor`, `VapidSigner`); posted with `TTL` (an hour), `Urgency: high`
-  and `Topic` (the tag). Only hosts of `household.push.allowed-hosts` are posted to (Apple, Google,
+  the JDK alone (`WebPushEncryptor`, `VapidSigner`); posted with `TTL` (an hour) and `Urgency: high` - no `Topic`, which
+  Apple refuses (`BadWebPushTopic`); the reason a push service gives for a refusal is logged
+  (0.6.1). Only hosts of `household.push.allowed-hosts` are posted to (Apple, Google,
   Mozilla, Microsoft); a subscription elsewhere is skipped and logged by its host.
 - **A dropped subscription** (404 or 410 from the push service) is removed through
   `DELETE /home/push-subscriptions?endpoint=` of `database-service` (0.19.0).
