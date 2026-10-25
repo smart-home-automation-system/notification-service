@@ -8,8 +8,11 @@ import mockwebserver3.RecordedRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.test.StepVerifier;
 
@@ -26,6 +29,7 @@ import java.time.Duration;
 import static org.assertj.core.api.Assertions.assertThat;
 
 //One message to one push service, over a real HTTP exchange (HAS-276)
+@ExtendWith(OutputCaptureExtension.class)
 class WebPushSenderTest {
 
     private static final byte[] PAYLOAD = "{\"notification\":{}}".getBytes(StandardCharsets.UTF_8);
@@ -101,6 +105,38 @@ class WebPushSenderTest {
             .as(StepVerifier::create)
             .expectNext(WebPushSender.Outcome.FAILED)
             .verifyComplete();
+    }
+
+    //the body names the cause - without it a 400 of Apple is a guess (found on the first real push)
+    @Test
+    void should_log_what_the_push_service_gave_as_the_reason_of_a_refusal(final CapturedOutput output) {
+        server.enqueue(new MockResponse.Builder().code(400).body("{\"reason\":\"BadWebPushTopic\"}").build());
+
+        sut.send(endpoint(), subscription, PAYLOAD, "appliance-133")
+            .as(StepVerifier::create)
+            .expectNext(WebPushSender.Outcome.FAILED)
+            .verifyComplete();
+
+        assertThat(output).contains("answered 400 to a push message: {\"reason\":\"BadWebPushTopic\"}");
+        assertThat(output).doesNotContain("/push/abc").doesNotContain(subscription.getKeys().getP256dh());
+    }
+
+    //the status decides, also when the body is more than the client takes in
+    @Test
+    void should_tell_a_refusal_with_a_body_it_cannot_read_by_its_status() {
+        server.enqueue(new MockResponse.Builder().code(500).body("x".repeat(300_000)).build());
+
+        sut.send(endpoint(), subscription, PAYLOAD, "appliance-133")
+            .as(StepVerifier::create)
+            .expectNext(WebPushSender.Outcome.FAILED)
+            .verifyComplete();
+    }
+
+    @Test
+    void should_put_a_reason_on_one_line_and_cut_a_long_one() {
+        assertThat(WebPushSender.reasonOf("")).isEqualTo("no reason given");
+        assertThat(WebPushSender.reasonOf("  bad\n  token \t")).isEqualTo("bad token");
+        assertThat(WebPushSender.reasonOf("x".repeat(250))).isEqualTo("x".repeat(200) + "...");
     }
 
     //keys a browser gave wrong fail that browser, never the message
