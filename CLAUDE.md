@@ -21,7 +21,7 @@ review.
   `blinds-service`, `amx-service`. The payload of alert and info is plain text — those
   listeners take a `String` and there is no JSON converter.
 - **Since HAS-274 also `notification.prod.household`** (`notification.dev.household` locally):
-  the JSON `HouseholdNotification` of `smart-home-sdk` 1.13.0, read with the `JsonMapper` of
+  the JSON `HouseholdNotification` of `smart-home-sdk` 1.14.0, read with the `JsonMapper` of
   Spring Boot into the model and validated (`HouseholdNotificationReader`), worded in Polish
   here (`HouseholdMessages`) and delivered by every `HouseholdTransport` (`HouseholdDispatcher`).
   Publisher: `appliance-service` (since its 0.3.0).
@@ -36,7 +36,7 @@ review.
   household test message to the household channel (Discord only; with `sms=true` also an SMS to the
   administrators, HAS-275). It is deliberately **not**
   routed by `api-gateway-service`.
-- Uses libraries: `smart-home-sdk` 1.13.0 (the household models, since HAS-274) and
+- Uses libraries: `smart-home-sdk` 1.14.0 (the household models, since HAS-274; `member` since HAS-347) and
   `cholewa-commons` (1.12.0 since HAS-276; 1.11.0 since HAS-274). The `WebClient`s of the push
   transport are built from the injected builder, so the Logbook filter of the library logs them
   with the `traceId` - there is no own `LogbookClientHandler`, and none may be added (every call
@@ -138,7 +138,11 @@ review.
     their sentences say what the appliance did (`Pralka skończyła pracę - czas ją opróżnić.`). The
     registry stays English (the owner's naming rule). **Any other subject is used as it comes** -
     Polish of any gender or English - so no sentence puts a gendered verb next to it (`Koniec pracy:
-    <device> - ...`, the review of HAS-274: `Dishwasher zakończyła` read badly). A new appliance with
+    <device> - ...`, the review of HAS-274: `Dishwasher zakończyła` read badly). **Who acknowledged it**
+    (HAS-347, `member` of smart-home-sdk 1.14.0, sent by appliance-service from the profile of the
+    application) stands after the verb - `... - potwierdza Liwia. Dziękujemy!` - so the name needs no
+    declension and no gender; a missing or blank one keeps the sentence without anybody, and only the
+    acknowledgement names anybody. A new appliance with
     a Polish name of another gender gets its own sentences, not a place in the map.
   - **Every transport is tried, all at once, and a failed one fails nothing else**
     (`HouseholdDispatcher`, `flatMap`): logged at ERROR with the transport named. At once and not

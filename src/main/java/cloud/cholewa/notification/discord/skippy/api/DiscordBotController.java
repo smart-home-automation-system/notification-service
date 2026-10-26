@@ -53,6 +53,7 @@ public class DiscordBotController {
         @RequestParam(defaultValue = "appliance finished") final String event,
         @RequestParam(defaultValue = "Zmywarka") @Size(min = 3, max = 50) final String subject,
         @RequestParam(defaultValue = "0") @Min(0) @Max(10) final int reminder,
+        @RequestParam(required = false) @Size(min = 3, max = 50) final String member,
         @RequestParam(defaultValue = "false") final boolean sms
     ) {
         //with sms=true (HAS-275) also one SMS to the administrators of the household - asked for by name,
@@ -64,13 +65,14 @@ public class DiscordBotController {
                     new ResponseStatusException(HttpStatus.CONFLICT, "the SMS of the household is switched off"))))
             .cache();
         return texting
-            .then(Mono.fromCallable(() -> HouseholdMessages.of(testNotification(event, subject, reminder))))
+            .then(Mono.fromCallable(() -> HouseholdMessages.of(testNotification(event, subject, reminder, member))))
             .flatMap(message -> service.sendHouseholdMessage(message)
                 .then(texting.flatMap(smoke -> smoke.sendToAdministrators(message)).then()))
             .thenReturn(ResponseEntity.ok().build());
     }
 
-    private static HouseholdNotification testNotification(final String event, final String subject, final int reminder) {
+    private static HouseholdNotification testNotification(final String event, final String subject, final int reminder,
+                                                         final String member) {
         final HouseholdEvent householdEvent;
         try {
             householdEvent = HouseholdEvent.fromValue(event);
@@ -83,6 +85,7 @@ public class DiscordBotController {
             .deviceId(1L)
             .occurredAt(LocalDateTime.now(ZoneId.systemDefault()))
             .reminder(reminder)
+            .member(member)
             .build();
     }
 }

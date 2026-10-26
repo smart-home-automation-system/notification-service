@@ -62,8 +62,17 @@ public final class HouseholdMessages {
                 name, name + " wciąż czeka na opróżnienie (przypomnienie " + notification.getReminder() + ").",
                 footer, REMINDER_COLOR);
             case APPLIANCE_ACKNOWLEDGED -> new HouseholdMessage(
-                name, name + " opróżniona - dziękujemy!", footer, ACKNOWLEDGED_COLOR);
+                name, acknowledgedBy(notification, name + " opróżniona")
+                    .orElse(name + " opróżniona - dziękujemy!"), footer, ACKNOWLEDGED_COLOR);
         };
+    }
+
+    //who acknowledged it (HAS-347): the name stands after the verb, so it needs neither a case nor a gender
+    private static Optional<String> acknowledgedBy(final HouseholdNotification notification, final String start) {
+        return Optional.ofNullable(notification.getMember())
+            .map(String::strip)
+            .filter(member -> !member.isEmpty())
+            .map(member -> start + " - potwierdza " + member + ". Dziękujemy!");
     }
 
     //any other device: no verb that has a gender - its name may be Polish of any gender, or English
@@ -76,7 +85,8 @@ public final class HouseholdMessages {
                 subject, "Przypomnienie " + notification.getReminder() + ": " + subject + " nadal czeka na opróżnienie.",
                 footer, REMINDER_COLOR);
             case APPLIANCE_ACKNOWLEDGED -> new HouseholdMessage(
-                subject, subject + " - potwierdzone, dziękujemy.", footer, ACKNOWLEDGED_COLOR);
+                subject, acknowledgedBy(notification, subject)
+                    .orElse(subject + " - potwierdzone, dziękujemy."), footer, ACKNOWLEDGED_COLOR);
         };
     }
 }
