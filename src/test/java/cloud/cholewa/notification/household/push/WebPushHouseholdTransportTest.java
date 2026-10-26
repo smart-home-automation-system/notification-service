@@ -1,5 +1,6 @@
 package cloud.cholewa.notification.household.push;
 
+import cloud.cholewa.notification.household.members.PresentMembersClient;
 import cloud.cholewa.home.model.HouseholdEvent;
 import cloud.cholewa.home.model.HouseholdNotification;
 import cloud.cholewa.home.model.PushSubscription;

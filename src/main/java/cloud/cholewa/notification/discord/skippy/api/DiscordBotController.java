@@ -4,11 +4,13 @@ import cloud.cholewa.home.model.HouseholdEvent;
 import cloud.cholewa.home.model.HouseholdNotification;
 import cloud.cholewa.notification.discord.skippy.service.DiscordBotService;
 import cloud.cholewa.notification.household.HouseholdMessages;
+import cloud.cholewa.notification.household.sms.SmsSmoke;
 import cloud.cholewa.notification.model.NotificationLevel;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,7 +29,7 @@ import java.time.ZoneId;
  * {@code category=household} (HAS-274) - a household notification of a made-up device, worded as
  * the household queue words one and posted to the household channel. Apart, so that the
  * parameters of one are neither read nor checked on a call of the other. Discord only, never the
- * SMS or the push of the household, which cost or wake somebody.
+ * push of the household; the SMS only with {@code sms=true}, to the administrators alone (HAS-275).
  */
 @RestController
 @RequiredArgsConstructor
@@ -35,6 +37,7 @@ import java.time.ZoneId;
 public class DiscordBotController {
 
     private final DiscordBotService service;
+    private final ObjectProvider<SmsSmoke> smsSmoke;
 
     @GetMapping
     Mono<ResponseEntity<Void>> sendMessage(
@@ -49,10 +52,21 @@ public class DiscordBotController {
     Mono<ResponseEntity<Void>> sendHouseholdMessage(
         @RequestParam(defaultValue = "appliance finished") final String event,
         @RequestParam(defaultValue = "Zmywarka") @Size(min = 3, max = 50) final String subject,
-        @RequestParam(defaultValue = "0") @Min(0) @Max(10) final int reminder
+        @RequestParam(defaultValue = "0") @Min(0) @Max(10) final int reminder,
+        @RequestParam(defaultValue = "false") final boolean sms
     ) {
-        return Mono.fromCallable(() -> HouseholdMessages.of(testNotification(event, subject, reminder)))
-            .flatMap(service::sendHouseholdMessage)
+        //with sms=true (HAS-275) also one SMS to the administrators of the household - asked for by name,
+        //never by default, and refused while the SMS is switched off
+        final Mono<SmsSmoke> texting = Mono.just(sms)
+            .filter(Boolean::booleanValue)
+            .flatMap(asked -> Mono.justOrEmpty(smsSmoke.getIfAvailable())
+                .switchIfEmpty(Mono.error(() ->
+                    new ResponseStatusException(HttpStatus.CONFLICT, "the SMS of the household is switched off"))))
+            .cache();
+        return texting
+            .then(Mono.fromCallable(() -> HouseholdMessages.of(testNotification(event, subject, reminder))))
+            .flatMap(message -> service.sendHouseholdMessage(message)
+                .then(texting.flatMap(smoke -> smoke.sendToAdministrators(message)).then()))
             .thenReturn(ResponseEntity.ok().build());
     }
 

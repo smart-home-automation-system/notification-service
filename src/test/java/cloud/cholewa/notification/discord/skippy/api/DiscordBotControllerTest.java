@@ -101,6 +101,17 @@ class DiscordBotControllerTest {
         assertThat(sent.getValue().text()).isEqualTo("Koniec pracy: Zmywarka - wymaga opróżnienia.");
     }
 
+    // HAS-275: sms=true while the SMS is switched off is refused, and nothing is posted
+    @Test
+    void should_refuse_an_sms_test_while_the_sms_is_switched_off() {
+        webTestClient.get()
+            .uri("/skippy?category=household&sms=true")
+            .exchange()
+            .expectStatus().isEqualTo(409);
+
+        verifyNoInteractions(discordBotService);
+    }
+
     //the household parameters belong to the household mapping: an alert call is not checked against them
     @Test
     void should_send_an_alert_whatever_household_parameters_come_with_it() {

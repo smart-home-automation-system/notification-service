@@ -58,6 +58,8 @@ logbook:
         - path: "https://fcm.googleapis.com/**"
         - path: "https://*.push.services.mozilla.com/**"
         - path: "https://*.notify.windows.com/**"
+        # nor a call to SMSAPI: the request holds the phone of a member and the text (HAS-275)
+        - path: "https://api.smsapi.pl/**"
 
 logging:
   structured:
@@ -85,6 +87,15 @@ household:
       - fcm.googleapis.com
       - push.services.mozilla.com
       - notify.windows.com
+  # the SMS of the household category (HAS-275): one SMS per member at home a message, through
+  # SMSAPI. The token comes from the secret 'notification', the sender is the name registered there
+  sms:
+    enabled: true
+    url: https://api.smsapi.pl
+    sender: ${smsapi-sender:}
+    token: ${smsapi-token:}
+    connect-timeout: 5s
+    response-timeout: 15s
 
 # the services this one calls inside the cluster, over k8s DNS. A bare number of a timeout is seconds
 internal:
@@ -155,6 +166,10 @@ rabbit:
 household:
   push:
     enabled: ${push-enabled:false}
+  # and no SMS either: an SMS costs and reaches a phone - SMS_ENABLED=true and the variables of
+  # household.sms switch it on
+  sms:
+    enabled: ${sms-enabled:false}
 
 ---
 
@@ -184,3 +199,7 @@ household:
   push:
     # no push in the tests: a test that wants the transport switches it on with keys of its own
     enabled: false
+  # nor SMS - and SMSAPI at an address nothing listens on, should a test switch it on
+  sms:
+    enabled: false
+    url: http://localhost:1

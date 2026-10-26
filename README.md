@@ -61,8 +61,27 @@ footer and the bar colored by the event:
 | `appliance acknowledged` | `<device> - potwierdzone, dziękujemy.` | green |
 
 A household notification is delivered by every **transport**, all at once
-(`HouseholdDispatcher`): Discord, **Web Push** (since HAS-276) and the SMS of SMSAPI to come
-(HAS-275). A transport that fails never fails the others; it is logged at ERROR with its name.
+(`HouseholdDispatcher`): Discord, **Web Push** (since HAS-276) and **SMS** (since HAS-275). A
+transport that fails never fails the others; it is logged at ERROR with its name.
+
+**SMS** (HAS-275) puts the sentence of the Discord message, cut to 160 characters, on the phones
+of the members at home - one SMS per member a message, through SMSAPI (`POST /sms.do`, the
+registered sender `smart-home`, `format=json`, `encoding=utf-8`):
+
+- **Who**: the members `presence-service` says are at home who are switched on in the registry
+  and have a phone (`GET /home/household` of `database-service`, read into a record of its own so
+  that a new room or device kind never fails it). The two reads are cached for 60 s - the SMS and
+  the footer of the Discord message ask at the same moment. Nobody at home is no failure; a read
+  that fails is, and then no SMS goes out.
+- **The Discord message names who the SMS went to** in its footer (`26.10.2026 11:30 · SMS: Ola,
+  Jan`); a read that fails or takes more than 5 s leaves the footer as it was.
+- **A refusal** (an error object of SMSAPI, with a 4xx or a 200) is logged at ERROR with the
+  member and the error code - never the number, the text or the token. Nothing is retried: an SMS
+  sent twice costs twice. The calls to SMSAPI are kept out of Logbook.
+- **Configuration**: `household.sms.enabled` (on in the shared document, off locally unless
+  `SMS_ENABLED=true`, and in the tests), `household.sms.sender` (`smsapi-sender`),
+  `household.sms.token` (`smsapi-token`, from the secret `notification`). The service refuses to
+  start with SMS on and no sender or token.
 
 **Web Push** (HAS-276) puts the same words on the phones of the members at home, as a
 notification of the installed application, also while it is closed (iOS 16.4+, the application
@@ -98,7 +117,7 @@ Base path `/home/notification` (`spring.webflux.base-path`). The endpoint is not
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/home/notification/skippy?message=<text>&level=<error\|warn\|info>` | Send `message` to the Discord `alerts` channel; `level` is optional and defaults to `info`. Returns `200 OK`; the `message` query parameter is required (`400 Bad Request` when missing); `502 Bad Gateway` when Discord refuses the request (a wrong channel id included). |
-| `GET` | `/home/notification/skippy?category=household&event=<event>&subject=<device>&reminder=<n>` | The smoke test of the household channel (since 0.5.0): a household notification of a made-up device, worded as the queue words one and posted to the household channel - **Discord only**, never the SMS or the push. `event` defaults to `appliance finished`, `subject` to `Zmywarka` (3-50 characters), `reminder` to `0` (0-10). `200 OK`; `400` for an unknown event or a bound broken; `502` when Discord refuses. |
+| `GET` | `/home/notification/skippy?category=household&event=<event>&subject=<device>&reminder=<n>` | The smoke test of the household channel (since 0.5.0): a household notification of a made-up device, worded as the queue words one and posted to the household channel - **Discord only** by default, never the push. With `sms=true` (since HAS-275) the same words also go by SMS to the **administrators** of the household, at home or not - one SMS to the owner, never to every member. `event` defaults to `appliance finished`, `subject` to `Zmywarka` (3-50 characters), `reminder` to `0` (0-10). `200 OK`; `400` for an unknown event or a bound broken; `409` for `sms=true` while the SMS is switched off; `502` when Discord refuses. |
 
 # Messaging
 

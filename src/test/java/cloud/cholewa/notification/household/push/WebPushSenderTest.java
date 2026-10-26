@@ -119,8 +119,10 @@ class WebPushSenderTest {
             .expectNext(WebPushSender.Outcome.FAILED)
             .verifyComplete();
 
-        assertThat(output).contains("answered 400 to a push message: {\"reason\":\"BadWebPushTopic\"}");
-        assertThat(output).doesNotContain("/push/abc").doesNotContain(subscription.getKeys().getP256dh());
+        assertThat(output)
+            .contains("answered 400 to a push message: {\"reason\":\"BadWebPushTopic\"}")
+            .doesNotContain("/push/abc")
+            .doesNotContain(subscription.getKeys().getP256dh());
     }
 
     //the status decides, also when the body is more than the client takes in

@@ -1,5 +1,6 @@
 package cloud.cholewa.notification.household.push;
 
+import cloud.cholewa.notification.household.members.PresentMembersClient;
 import cloud.cholewa.home.model.PushSubscription;
 import mockwebserver3.MockResponse;
 import mockwebserver3.MockWebServer;

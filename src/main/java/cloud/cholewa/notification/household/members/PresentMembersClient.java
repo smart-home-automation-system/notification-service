@@ -1,4 +1,4 @@
-package cloud.cholewa.notification.household.push;
+package cloud.cholewa.notification.household.members;
 
 import cloud.cholewa.commons.error.DownstreamErrors;
 import lombok.extern.slf4j.Slf4j;
@@ -12,7 +12,8 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Who of the household is at home, from presence-service over k8s DNS - not through the gateway (HAS-276):
+ * Who of the household is at home, from presence-service over k8s DNS - not through the gateway (HAS-276,
+ * read by the Web Push and the SMS of HAS-275):
  * the push goes to the members at home only, the Discord channel to everybody (owner, 2026-10-11).
  * <p>
  * What a failing presence-service says goes to the log; no body, or one that is not a list, is a failed
@@ -20,18 +21,18 @@ import java.util.Objects;
  * missing is not at home: nothing says they are.
  */
 @Slf4j
-class PresentMembersClient {
+public class PresentMembersClient {
 
     private static final ParameterizedTypeReference<List<ResidentPresence>> RESIDENTS = new ParameterizedTypeReference<>() {
     };
 
     private final WebClient presenceWebClient;
 
-    PresentMembersClient(@Qualifier("presenceWebClient") final WebClient presenceWebClient) {
+    public PresentMembersClient(@Qualifier("presenceWebClient") final WebClient presenceWebClient) {
         this.presenceWebClient = presenceWebClient;
     }
 
-    Mono<List<String>> present() {
+    public Mono<List<String>> present() {
         return presenceWebClient
             .get()
             .uri("/home/presence/residents/presence")
