@@ -27,7 +27,7 @@ class SmsApiClientTest {
 
     private static final String PHONE = "+48500000001";
     private static final String TOKEN = "test-token-not-real";
-    private static final String TEXT = "Koniec pracy: Zmywarka - wymaga opróżnienia.";
+    private static final String TEXT = "Zmywarka skończyła pracę - czas ją opróżnić.";
 
     private MockWebServer server;
     private SmsApiClient sut;

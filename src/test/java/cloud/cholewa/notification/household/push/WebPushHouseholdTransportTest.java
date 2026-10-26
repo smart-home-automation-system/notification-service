@@ -86,8 +86,8 @@ class WebPushHouseholdTransportTest {
         final ArgumentCaptor<byte[]> payload = ArgumentCaptor.forClass(byte[].class);
         verify(sender).send(any(), any(), payload.capture());
         final JsonNode shown = jsonMapper.readTree(payload.getValue()).get("notification");
-        assertThat(shown.get("title").asString()).isEqualTo("Dishwasher");
-        assertThat(shown.get("body").asString()).isEqualTo("Koniec pracy: Dishwasher - wymaga opróżnienia.");
+        assertThat(shown.get("title").asString()).isEqualTo("Zmywarka");
+        assertThat(shown.get("body").asString()).isEqualTo("Zmywarka skończyła pracę - czas ją opróżnić.");
         assertThat(shown.get("tag").asString()).isEqualTo("appliance-133");
         assertThat(shown.get("renotify").asBoolean()).isTrue();
         assertThat(shown.get("requireInteraction").asBoolean()).isTrue();

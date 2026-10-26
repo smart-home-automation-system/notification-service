@@ -45,7 +45,7 @@ class SmsHouseholdTransportTest {
 
         sut.deliver(FINISHED, MESSAGE).as(StepVerifier::create).verifyComplete();
 
-        verify(client).send("Ola", "+48500000001", "Koniec pracy: Washing machine - wymaga opróżnienia.");
+        verify(client).send("Ola", "+48500000001", "Pralka skończyła pracę - czas ją opróżnić.");
         verify(client).send(eq("Jan"), eq("+48500000002"), any());
     }
 

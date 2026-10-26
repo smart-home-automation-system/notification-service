@@ -49,8 +49,8 @@ class HouseholdDispatcherTest {
         sut.dispatch(NOTIFICATION).as(StepVerifier::create).verifyComplete();
 
         assertThat(delivered).containsExactly(
-            "discord: Koniec pracy: Zmywarka - wymaga opróżnienia.",
-            "sms: Koniec pracy: Zmywarka - wymaga opróżnienia.");
+            "discord: Zmywarka skończyła pracę - czas ją opróżnić.",
+            "sms: Zmywarka skończyła pracę - czas ją opróżnić.");
     }
 
     //a signalled error and one thrown while building the delivery alike
@@ -61,7 +61,7 @@ class HouseholdDispatcherTest {
 
         sut.dispatch(NOTIFICATION).as(StepVerifier::create).verifyComplete();
 
-        assertThat(delivered).containsExactly("sms: Koniec pracy: Zmywarka - wymaga opróżnienia.");
+        assertThat(delivered).containsExactly("sms: Zmywarka skończyła pracę - czas ją opróżnić.");
         assertThat(logs.list)
             .filteredOn(event -> event.getLevel() == Level.ERROR)
             .extracting(ILoggingEvent::getFormattedMessage)
@@ -87,12 +87,12 @@ class HouseholdDispatcherTest {
 
         StepVerifier.withVirtualTime(() -> new HouseholdDispatcher(List.of(slow, working("sms"))).dispatch(NOTIFICATION))
             .expectSubscription()
-            .then(() -> assertThat(delivered).containsExactly("sms: Koniec pracy: Zmywarka - wymaga opróżnienia."))
+            .then(() -> assertThat(delivered).containsExactly("sms: Zmywarka skończyła pracę - czas ją opróżnić."))
             .expectNoEvent(Duration.ofSeconds(59))
             .thenAwait(Duration.ofSeconds(1))
             .verifyComplete();
 
-        assertThat(delivered).containsExactly("sms: Koniec pracy: Zmywarka - wymaga opróżnienia.", "discord");
+        assertThat(delivered).containsExactly("sms: Zmywarka skończyła pracę - czas ją opróżnić.", "discord");
     }
 
     @Test

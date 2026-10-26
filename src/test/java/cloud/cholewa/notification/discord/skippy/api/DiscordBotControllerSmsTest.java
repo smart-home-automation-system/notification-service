@@ -46,7 +46,7 @@ class DiscordBotControllerSmsTest {
         final ArgumentCaptor<HouseholdMessage> posted = ArgumentCaptor.forClass(HouseholdMessage.class);
         verify(discordBotService).sendHouseholdMessage(posted.capture());
         verify(smsSmoke).sendToAdministrators(posted.getValue());
-        assertThat(posted.getValue().text()).isEqualTo("Koniec pracy: Zmywarka - wymaga opróżnienia.");
+        assertThat(posted.getValue().text()).isEqualTo("Zmywarka skończyła pracę - czas ją opróżnić.");
     }
 
     // an SMS costs and reaches a phone: never without sms=true

@@ -4,9 +4,11 @@ import cloud.cholewa.home.model.HouseholdEvent;
 import cloud.cholewa.home.model.HouseholdNotification;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 
 import java.time.LocalDateTime;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -18,10 +20,10 @@ class HouseholdMessagesTest {
 
     @Test
     void should_say_that_an_appliance_finished_and_needs_emptying() {
-        final HouseholdMessage message = HouseholdMessages.of(notification(HouseholdEvent.APPLIANCE_FINISHED, 0));
+        final HouseholdMessage message = HouseholdMessages.of(notification("Dishwasher", HouseholdEvent.APPLIANCE_FINISHED, 0));
 
         assertThat(message.title()).isEqualTo("Zmywarka");
-        assertThat(message.text()).isEqualTo("Koniec pracy: Zmywarka - wymaga opróżnienia.");
+        assertThat(message.text()).isEqualTo("Zmywarka skończyła pracę - czas ją opróżnić.");
         assertThat(message.footer()).isEqualTo("24.10.2026 19:05");
         assertThat(message.color()).isEqualTo(HouseholdMessages.FINISHED_COLOR);
     }
@@ -29,40 +31,76 @@ class HouseholdMessagesTest {
     //the payload carries the number of the reminder, not how many there will be
     @Test
     void should_remind_with_the_number_of_the_reminder() {
-        final HouseholdMessage message = HouseholdMessages.of(notification(HouseholdEvent.APPLIANCE_REMINDER, 2));
+        final HouseholdMessage message = HouseholdMessages.of(notification("Washing machine", HouseholdEvent.APPLIANCE_REMINDER, 2));
 
-        assertThat(message.text()).isEqualTo("Przypomnienie 2: Zmywarka nadal czeka na opróżnienie.");
+        assertThat(message.text()).isEqualTo("Pralka wciąż czeka na opróżnienie (przypomnienie 2).");
         assertThat(message.color()).isEqualTo(HouseholdMessages.REMINDER_COLOR);
     }
 
     @Test
     void should_thank_when_somebody_acknowledged() {
-        final HouseholdMessage message = HouseholdMessages.of(notification(HouseholdEvent.APPLIANCE_ACKNOWLEDGED, 3));
+        final HouseholdMessage message = HouseholdMessages.of(notification("Dryer", HouseholdEvent.APPLIANCE_ACKNOWLEDGED, 3));
 
-        assertThat(message.text()).isEqualTo("Zmywarka - potwierdzone, dziękujemy.");
+        assertThat(message.text()).isEqualTo("Suszarka opróżniona - dziękujemy!");
         assertThat(message.color()).isEqualTo(HouseholdMessages.ACKNOWLEDGED_COLOR);
+    }
+
+    //the registry names them in English; a Polish name, or another case, reads the same
+    @ParameterizedTest
+    @CsvSource({
+        "Washing machine, Pralka", "WASHING MACHINE, Pralka", "' pralka ', Pralka",
+        "Dryer, Suszarka", "suszarka, Suszarka",
+        "Dishwasher, Zmywarka", "Zmywarka, Zmywarka"})
+    void should_name_the_three_appliances_in_polish(final String registryName, final String polish) {
+        assertThat(HouseholdMessages.of(notification(registryName, HouseholdEvent.APPLIANCE_FINISHED, 0)).title())
+            .isEqualTo(polish);
+    }
+
+    //a device the service does not know keeps its name, in sentences without a gendered verb
+    @Test
+    void should_word_another_device_without_a_gendered_verb() {
+        final String name = "Coffee machine";
+
+        assertThat(HouseholdMessages.of(notification(name, HouseholdEvent.APPLIANCE_FINISHED, 0)))
+            .extracting(HouseholdMessage::title, HouseholdMessage::text)
+            .containsExactly(name, "Koniec pracy: Coffee machine - wymaga opróżnienia.");
+        assertThat(HouseholdMessages.of(notification(name, HouseholdEvent.APPLIANCE_REMINDER, 2)).text())
+            .isEqualTo("Przypomnienie 2: Coffee machine nadal czeka na opróżnienie.");
+        assertThat(HouseholdMessages.of(notification(name, HouseholdEvent.APPLIANCE_ACKNOWLEDGED, 3)).text())
+            .isEqualTo("Coffee machine - potwierdzone, dziękujemy.");
     }
 
     //every event of the SDK has words, a title and a footer
     @ParameterizedTest
     @EnumSource(HouseholdEvent.class)
     void should_word_every_event(final HouseholdEvent event) {
-        final HouseholdMessage message = HouseholdMessages.of(notification(event, 1));
+        final HouseholdMessage message = HouseholdMessages.of(notification("Dishwasher", event, 1));
 
         assertThat(message.title()).isEqualTo("Zmywarka");
         assertThat(message.text()).contains("Zmywarka").isNotBlank();
         assertThat(message.footer()).isEqualTo("24.10.2026 19:05");
     }
 
+    //and the same for a device without a Polish name
+    @ParameterizedTest
+    @EnumSource(HouseholdEvent.class)
+    void should_word_every_event_of_another_device(final HouseholdEvent event) {
+        final HouseholdMessage message = HouseholdMessages.of(notification("Coffee machine", event, 1));
+
+        assertThat(message.title()).isEqualTo("Coffee machine");
+        assertThat(message.text()).contains("Coffee machine").isNotBlank();
+        assertThat(message.footer()).isEqualTo("24.10.2026 19:05");
+    }
+
     @Test
     void should_tell_the_three_events_apart_by_color() {
-        assertThat(java.util.Set.of(
+        assertThat(Set.of(
             HouseholdMessages.FINISHED_COLOR, HouseholdMessages.REMINDER_COLOR, HouseholdMessages.ACKNOWLEDGED_COLOR
         )).hasSize(3);
     }
 
-    private static HouseholdNotification notification(final HouseholdEvent event, final int reminder) {
+    private static HouseholdNotification notification(final String subject, final HouseholdEvent event, final int reminder) {
         return HouseholdNotification.builder()
-            .event(event).subject("Zmywarka").deviceId(64L).occurredAt(AT).reminder(reminder).build();
+            .event(event).subject(subject).deviceId(64L).occurredAt(AT).reminder(reminder).build();
     }
 }
