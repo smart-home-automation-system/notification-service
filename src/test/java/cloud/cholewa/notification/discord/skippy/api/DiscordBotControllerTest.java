@@ -86,6 +86,21 @@ class DiscordBotControllerTest {
         verify(discordBotService, never()).sendMessage(any(), any());
     }
 
+    //HAS-347: who acknowledged it, as the payload of appliance-service carries it
+    @Test
+    void should_name_who_acknowledged_in_a_household_test_message() {
+        when(discordBotService.sendHouseholdMessage(any())).thenReturn(Mono.empty());
+
+        webTestClient.get()
+            .uri("/skippy?category=household&event=appliance acknowledged&subject=Dryer&reminder=1&member=Anna")
+            .exchange()
+            .expectStatus().isOk();
+
+        final ArgumentCaptor<HouseholdMessage> sent = ArgumentCaptor.forClass(HouseholdMessage.class);
+        verify(discordBotService).sendHouseholdMessage(sent.capture());
+        assertThat(sent.getValue().text()).isEqualTo("Suszarka opróżniona - potwierdza Anna. Dziękujemy!");
+    }
+
     //without anything but the category: the dishwasher finished, as the task words it
     @Test
     void should_post_the_default_household_test_message() {
@@ -132,6 +147,7 @@ class DiscordBotControllerTest {
         "/skippy",
         "/skippy?category=household&reminder=11",
         "/skippy?category=household&subject=ab",
+        "/skippy?category=household&member=ab",
         "/skippy?category=household&event=appliance exploded"
     })
     void should_refuse_a_request_it_cannot_send_with_400(final String uri) {

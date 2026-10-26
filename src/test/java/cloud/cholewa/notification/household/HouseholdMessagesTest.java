@@ -45,6 +45,32 @@ class HouseholdMessagesTest {
         assertThat(message.color()).isEqualTo(HouseholdMessages.ACKNOWLEDGED_COLOR);
     }
 
+    //HAS-347: who acknowledged it - after the verb, so neither the case of the name nor a gender matters
+    @Test
+    void should_name_who_acknowledged_it() {
+        assertThat(HouseholdMessages.of(acknowledged("Dryer", "Anna")).text())
+            .isEqualTo("Suszarka opróżniona - potwierdza Anna. Dziękujemy!");
+        assertThat(HouseholdMessages.of(acknowledged("Coffee machine", "Jan")).text())
+            .isEqualTo("Coffee machine - potwierdza Jan. Dziękujemy!");
+    }
+
+    //nobody known, or a blank name: the sentences without anybody
+    @Test
+    void should_thank_without_a_name_when_nobody_is_known() {
+        assertThat(HouseholdMessages.of(acknowledged("Dryer", null)).text()).isEqualTo("Suszarka opróżniona - dziękujemy!");
+        assertThat(HouseholdMessages.of(acknowledged("Dryer", "  ")).text()).isEqualTo("Suszarka opróżniona - dziękujemy!");
+        assertThat(HouseholdMessages.of(acknowledged("Coffee machine", null)).text())
+            .isEqualTo("Coffee machine - potwierdzone, dziękujemy.");
+    }
+
+    //only the acknowledgement names anybody
+    @Test
+    void should_name_nobody_in_the_other_events() {
+        final HouseholdNotification finished = notification("Dryer", HouseholdEvent.APPLIANCE_FINISHED, 0).member("Anna");
+
+        assertThat(HouseholdMessages.of(finished).text()).doesNotContain("Anna");
+    }
+
     //the registry names them in English; a Polish name, or another case, reads the same
     @ParameterizedTest
     @CsvSource({
@@ -97,6 +123,10 @@ class HouseholdMessagesTest {
         assertThat(Set.of(
             HouseholdMessages.FINISHED_COLOR, HouseholdMessages.REMINDER_COLOR, HouseholdMessages.ACKNOWLEDGED_COLOR
         )).hasSize(3);
+    }
+
+    private static HouseholdNotification acknowledged(final String subject, final String member) {
+        return notification(subject, HouseholdEvent.APPLIANCE_ACKNOWLEDGED, 2).member(member);
     }
 
     private static HouseholdNotification notification(final String subject, final HouseholdEvent event, final int reminder) {

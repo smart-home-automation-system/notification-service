@@ -49,7 +49,7 @@ the delivery (0.3.0 delivered nothing for that reason).
 **The household category** (since 0.5.0, HAS-274) is for the people who live in the house, in
 Polish, on a Discord channel of its own (`discord.bot.skippy.household-channel-id`, environment
 variable `discord_household_channel_id`, mandatory like the alerts channel). Its payload is the
-JSON `HouseholdNotification` of `smart-home-sdk` 1.13.0 - what happened to which device, never a
+JSON `HouseholdNotification` of `smart-home-sdk` 1.14.0 - what happened to which device, never a
 text: the words are composed here (`HouseholdMessages`), one embed per message with the device as
 the title, the sentence as the description, the time of the house (`dd.MM.yyyy HH:mm`) in the
 footer and the bar colored by the event. The three appliances of the registry are told by their
@@ -60,11 +60,11 @@ Polish names, whatever the case of the registry name (`Washing machine` - `Pralk
 |---|---|---|
 | `appliance finished` | `Pralka skończyła pracę - czas ją opróżnić.` | orange |
 | `appliance reminder` | `Pralka wciąż czeka na opróżnienie (przypomnienie <n>).` | dark orange |
-| `appliance acknowledged` | `Pralka opróżniona - dziękujemy!` | green |
+| `appliance acknowledged` | `Pralka opróżniona - dziękujemy!`; with the `member` who acknowledged it (since HAS-347): `Pralka opróżniona - potwierdza Liwia. Dziękujemy!` | green |
 
 Any other device keeps its registry name, in sentences without a gendered verb:
 `Koniec pracy: <device> - wymaga opróżnienia.`, `Przypomnienie <n>: <device> nadal czeka na
-opróżnienie.`, `<device> - potwierdzone, dziękujemy.`
+opróżnienie.`, `<device> - potwierdzone, dziękujemy.` (with a member: `<device> - potwierdza <member>. Dziękujemy!`)
 
 A household notification is delivered by every **transport**, all at once
 (`HouseholdDispatcher`): Discord, **Web Push** (since HAS-276) and **SMS** (since HAS-275). A
@@ -125,7 +125,7 @@ Base path `/home/notification` (`spring.webflux.base-path`). The endpoint is not
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/home/notification/skippy?message=<text>&level=<error\|warn\|info>` | Send `message` to the Discord `alerts` channel; `level` is optional and defaults to `info`. Returns `200 OK`; the `message` query parameter is required (`400 Bad Request` when missing); `502 Bad Gateway` when Discord refuses the request (a wrong channel id included). |
-| `GET` | `/home/notification/skippy?category=household&event=<event>&subject=<device>&reminder=<n>` | The smoke test of the household channel (since 0.5.0): a household notification of a made-up device, worded as the queue words one and posted to the household channel - **Discord only** by default, never the push. With `sms=true` (since HAS-275) the same words also go by SMS to the **administrators** of the household, at home or not - one SMS to the owner, never to every member. `event` defaults to `appliance finished`, `subject` to `Zmywarka` (3-50 characters), `reminder` to `0` (0-10). `200 OK`; `400` for an unknown event or a bound broken; `409` for `sms=true` while the SMS is switched off; `502` when Discord refuses. |
+| `GET` | `/home/notification/skippy?category=household&event=<event>&subject=<device>&reminder=<n>&member=<name>` | The smoke test of the household channel (since 0.5.0): a household notification of a made-up device, worded as the queue words one and posted to the household channel - **Discord only** by default, never the push. With `sms=true` (since HAS-275) the same words also go by SMS to the **administrators** of the household, at home or not - one SMS to the owner, never to every member. `event` defaults to `appliance finished`, `subject` to `Zmywarka` (3-50 characters), `reminder` to `0` (0-10); `member` (3-50, optional, HAS-347) names who acknowledged it. `200 OK`; `400` for an unknown event or a bound broken; `409` for `sms=true` while the SMS is switched off; `502` when Discord refuses. |
 
 # Messaging
 
