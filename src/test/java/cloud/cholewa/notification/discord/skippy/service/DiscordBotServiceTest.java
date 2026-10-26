@@ -200,13 +200,13 @@ class DiscordBotServiceTest {
         when(restChannel.createMessage(any(MessageCreateRequest.class))).thenReturn(Mono.just(mock(MessageData.class)));
 
         discordBotService.sendHouseholdMessage(new HouseholdMessage(
-                "Zmywarka", "Koniec pracy: Zmywarka - wymaga opróżnienia.", "24.10.2026 19:40", 0xF39C12))
+                "Zmywarka", "Zmywarka skończyła pracę - czas ją opróżnić.", "24.10.2026 19:40", 0xF39C12))
             .as(StepVerifier::create)
             .verifyComplete();
 
         final EmbedData embed = sentRequest().embeds().get().getFirst();
         assertThat(embed.title().get()).isEqualTo("Zmywarka");
-        assertThat(embed.description().get()).isEqualTo("Koniec pracy: Zmywarka - wymaga opróżnienia.");
+        assertThat(embed.description().get()).isEqualTo("Zmywarka skończyła pracę - czas ją opróżnić.");
         assertThat(embed.footer().get().text()).isEqualTo("24.10.2026 19:40");
         assertThat(embed.color().get()).isEqualTo(0xF39C12);
         assertThat(sentRequest().content().isAbsent()).isTrue();

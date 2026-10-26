@@ -82,7 +82,7 @@ class DiscordBotControllerTest {
         final ArgumentCaptor<HouseholdMessage> sent = ArgumentCaptor.forClass(HouseholdMessage.class);
         verify(discordBotService).sendHouseholdMessage(sent.capture());
         assertThat(sent.getValue().title()).isEqualTo("Pralka");
-        assertThat(sent.getValue().text()).isEqualTo("Przypomnienie 2: Pralka nadal czeka na opróżnienie.");
+        assertThat(sent.getValue().text()).isEqualTo("Pralka wciąż czeka na opróżnienie (przypomnienie 2).");
         verify(discordBotService, never()).sendMessage(any(), any());
     }
 
@@ -98,7 +98,7 @@ class DiscordBotControllerTest {
 
         final ArgumentCaptor<HouseholdMessage> sent = ArgumentCaptor.forClass(HouseholdMessage.class);
         verify(discordBotService).sendHouseholdMessage(sent.capture());
-        assertThat(sent.getValue().text()).isEqualTo("Koniec pracy: Zmywarka - wymaga opróżnienia.");
+        assertThat(sent.getValue().text()).isEqualTo("Zmywarka skończyła pracę - czas ją opróżnić.");
     }
 
     // HAS-275: sms=true while the SMS is switched off is refused, and nothing is posted

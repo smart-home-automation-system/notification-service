@@ -132,9 +132,14 @@ review.
     made on a real message (the lesson of HAS-94): `HouseholdMessages`, written out in
     `HouseholdMessagesTest`. The switch names every `HouseholdEvent` - a value added to the SDK
     stops the compiler there. The reminder says its number only: the payload does not carry how
-    many there will be. The subject is the device name of the registry, used as it comes - Polish
-    of any gender or English - so **no sentence puts a gendered verb next to it** (`Koniec pracy:
-    <device> - ...`, the review of HAS-274: `Dishwasher zakończyła` read badly).
+    many there will be. **The three appliances are told by their Polish names** (HAS-285, owner
+    2026-10-26: `POLISH_NAMES` maps `Washing machine` / `Dryer` / `Dishwasher` and the Polish names
+    themselves, whatever the case, to `Pralka` / `Suszarka` / `Zmywarka`): all three feminine, so
+    their sentences say what the appliance did (`Pralka skończyła pracę - czas ją opróżnić.`). The
+    registry stays English (the owner's naming rule). **Any other subject is used as it comes** -
+    Polish of any gender or English - so no sentence puts a gendered verb next to it (`Koniec pracy:
+    <device> - ...`, the review of HAS-274: `Dishwasher zakończyła` read badly). A new appliance with
+    a Polish name of another gender gets its own sentences, not a place in the map.
   - **Every transport is tried, all at once, and a failed one fails nothing else**
     (`HouseholdDispatcher`, `flatMap`): logged at ERROR with the transport named. At once and not
     in series: Discord retrying for over a minute must not hold back the SMS and the push. The

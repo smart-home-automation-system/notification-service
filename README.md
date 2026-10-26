@@ -52,13 +52,19 @@ variable `discord_household_channel_id`, mandatory like the alerts channel). Its
 JSON `HouseholdNotification` of `smart-home-sdk` 1.13.0 - what happened to which device, never a
 text: the words are composed here (`HouseholdMessages`), one embed per message with the device as
 the title, the sentence as the description, the time of the house (`dd.MM.yyyy HH:mm`) in the
-footer and the bar colored by the event:
+footer and the bar colored by the event. The three appliances of the registry are told by their
+Polish names, whatever the case of the registry name (`Washing machine` - `Pralka`, `Dryer` -
+`Suszarka`, `Dishwasher` - `Zmywarka`; HAS-285), here with `Pralka`:
 
 | Event | Text | Color |
 |---|---|---|
-| `appliance finished` | `Koniec pracy: <device> - wymaga opróżnienia.` | orange |
-| `appliance reminder` | `Przypomnienie <n>: <device> nadal czeka na opróżnienie.` | dark orange |
-| `appliance acknowledged` | `<device> - potwierdzone, dziękujemy.` | green |
+| `appliance finished` | `Pralka skończyła pracę - czas ją opróżnić.` | orange |
+| `appliance reminder` | `Pralka wciąż czeka na opróżnienie (przypomnienie <n>).` | dark orange |
+| `appliance acknowledged` | `Pralka opróżniona - dziękujemy!` | green |
+
+Any other device keeps its registry name, in sentences without a gendered verb:
+`Koniec pracy: <device> - wymaga opróżnienia.`, `Przypomnienie <n>: <device> nadal czeka na
+opróżnienie.`, `<device> - potwierdzone, dziękujemy.`
 
 A household notification is delivered by every **transport**, all at once
 (`HouseholdDispatcher`): Discord, **Web Push** (since HAS-276) and **SMS** (since HAS-275). A
