@@ -29,9 +29,12 @@ review.
   category to a channel of its own; both are configured by id. **Since HAS-276 also**, for the
   Web Push of the household category: `presence-service` (`GET /home/presence/residents/presence`)
   and `database-service` (`GET` / `DELETE /home/push-subscriptions`) over k8s DNS
-  (`internal.service.*`), and the push services of `household.push.allowed-hosts`.
+  (`internal.service.*`), and the push services of `household.push.allowed-hosts`. **Since HAS-275**
+  for the SMS: `GET /home/household` of `database-service` (the phones) and SMSAPI
+  (`https://api.smsapi.pl/sms.do`).
 - `GET /home/notification/skippy?message=` sends a text by hand, and `?category=household` a
-  household test message to the household channel (Discord only). It is deliberately **not**
+  household test message to the household channel (Discord only; with `sms=true` also an SMS to the
+  administrators, HAS-275). It is deliberately **not**
   routed by `api-gateway-service`.
 - Uses libraries: `smart-home-sdk` 1.13.0 (the household models, since HAS-274) and
   `cholewa-commons` (1.12.0 since HAS-276; 1.11.0 since HAS-274). The `WebClient`s of the push
@@ -140,11 +143,37 @@ review.
     Discord one with `DiscordDeliveryRetry`, the policy the alerts use (extracted for it). **Its
     warnings are logged under `DiscordDeliveryRetry` since HAS-274** (before:
     `NotificationMessageService`) - no dashboard of deployment-tools filtered by the old name.
-  - **The SMS (HAS-275) is a transport to add** - one `@Component` implementing
-    `HouseholdTransport`; the secret `notification` gives it `smsapi-token`, the manifest
-    `smsapi-sender`. The sender `smart-home` was refused by SMSAPI on 2026-10-24 (error 14): it is
-    the name of the API token, not a sender name of the account - check the sender names of the
-    account before HAS-275. Who is at home it can take from `PresentMembersClient` of the push.
+  - **Who to reach is one package, `household.members`** (HAS-275): `HouseholdServicesConfig` (the
+    WebClients of presence-service and database-service, `internal.service.*`, always there),
+    `PresentMembersClient` (who is at home) and `HouseholdRegistryClient` (`GET /home/household`,
+    read into a record of its own - name, phone, active, role as text - **never the
+    `HouseholdMember` of the SDK**: a room or device enum this service does not know would fail the
+    read of a phone). The push and the SMS take them from there.
+  - **The SMS (HAS-275, package `household.sms`)** - what is easy to break:
+    - **Only with `household.sms.enabled`** (`SmsConfig`): without it no SMS transport, no SMSAPI
+      client, and the smoke test answers `sms=true` with 409. On in the shared document, off in
+      `local` (`SMS_ENABLED=true`) and in `test` (SMSAPI at `http://localhost:1`). The start fails on
+      a blank sender or token. The sender **`smart-home`** is the name registered at SMSAPI (active
+      since 2026-10-24; the error 14 of that day came before it was confirmed).
+    - **Recipients**: present by presence-service ∩ switched on with a phone in the registry,
+      matched whatever the case; **cached 60 s** (`SmsRecipients`, `Mono.cache` with a TTL; a failed
+      read is not kept). One SMS per member, one after the other; nobody at home completes, a failed
+      read fails the transport - never an SMS to everybody instead; the transport fails only when no
+      SMS was accepted.
+    - **SMSAPI refuses with an error object, with a 4xx or with a 200** (`SmsApiClient`): accepted
+      only with a 2xx, a `count` and no `error`. Logged at ERROR with the member and the **code
+      alone** - the message may repeat the number; never the number, the text or the token. Nothing
+      is retried (an SMS costs). The calls are excluded from Logbook (the form holds the phone).
+    - **The text is the Discord sentence cut to 160 code points** (`SmsText`). Polish letters make
+      it a Unicode SMS (70 characters a part): today's sentences fit one part; a longer one costs up
+      to three per member (SMSAPI's `normalize=1` would be the way out, not taken).
+    - **The Discord footer names who the SMS goes to** (`DiscordHouseholdTransport` asks the same
+      cached `SmsRecipients`, within 5 s; a failure or a timeout leaves the footer as it was - the
+      Discord message never waits for the SMS nor fails because of it). Without SMS no line.
+    - **The smoke test `sms=true` texts the administrators** (`SmsSmoke`), at home or not - one SMS
+      to the owner, never to every member.
+    - The read of the registry is logged by Logbook at trace with its body (phones and MACs) - the
+      accepted rule of the organization; database-service logs the same body.
   - **The Web Push (HAS-276, package `household.push`)** - what is easy to break:
     - **Only with `household.push.enabled`** (`WebPushConfig`, `@ConditionalOnBooleanProperty`):
       without it there is no push transport, no `WebClient` and no `internal.service` binding. On

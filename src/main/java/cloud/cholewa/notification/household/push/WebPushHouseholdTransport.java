@@ -1,5 +1,6 @@
 package cloud.cholewa.notification.household.push;
 
+import cloud.cholewa.notification.household.members.PresentMembersClient;
 import cloud.cholewa.home.model.HouseholdNotification;
 import cloud.cholewa.home.model.PushSubscription;
 import cloud.cholewa.notification.household.HouseholdMessage;
@@ -64,20 +65,15 @@ class WebPushHouseholdTransport implements HouseholdTransport {
     public Mono<Void> deliver(final HouseholdNotification notification, final HouseholdMessage message) {
         return presentMembers.present()
             .map(WebPushHouseholdTransport::askable)
-            .flatMap(members -> {
-                if (members.isEmpty()) {
-                    log.info("Nobody of the household is at home: no push for [{}] of [{}]",
-                        notification.getEvent(), notification.getSubject());
-                    return Mono.empty();
-                }
-                //database-service takes at most MEMBERS_PER_READ names a read: more at home are asked in turn
-                return Flux.fromIterable(members)
-                    .buffer(MEMBERS_PER_READ)
-                    .concatMap(subscriptions::ofMembers)
-                    .flatMapIterable(found -> found)
-                    .collectList()
-                    .flatMap(found -> send(found, notification, message));
-            });
+            .filter(members -> !members.isEmpty())
+            .switchIfEmpty(Mono.fromRunnable(() -> log.info("Nobody of the household is at home: no push for [{}] of [{}]",
+                notification.getEvent(), notification.getSubject())))
+            //database-service takes at most MEMBERS_PER_READ names a read: more at home are asked in turn
+            .flatMapMany(members -> Flux.fromIterable(members).buffer(MEMBERS_PER_READ))
+            .concatMap(subscriptions::ofMembers)
+            .flatMapIterable(found -> found)
+            .collectList()
+            .flatMap(found -> send(found, notification, message));
     }
 
     private Mono<Void> send(
@@ -88,22 +84,24 @@ class WebPushHouseholdTransport implements HouseholdTransport {
         final byte[] payload = PushPayload.of(notification, message, jsonMapper);
 
         return Flux.fromIterable(found)
-            .flatMap(subscription -> allowedEndpoint(subscription)
-                .map(endpoint -> sender.send(endpoint, subscription, payload)
-                    .flatMap(outcome -> outcome == WebPushSender.Outcome.GONE
-                        ? removeGone(subscription).thenReturn(outcome)
-                        : Mono.just(outcome)))
-                .orElseGet(() -> Mono.just(WebPushSender.Outcome.FAILED)))
+            .flatMap(subscription -> Mono.justOrEmpty(allowedEndpoint(subscription))
+                .flatMap(endpoint -> sender.send(endpoint, subscription, payload))
+                //a dropped subscription is removed from the registry, and still counted as what it came to
+                .flatMap(outcome -> Mono.just(outcome)
+                    .filter(WebPushSender.Outcome.GONE::equals)
+                    .flatMap(gone -> removeGone(subscription).thenReturn(gone))
+                    .defaultIfEmpty(outcome))
+                .defaultIfEmpty(WebPushSender.Outcome.FAILED))
             .collectList()
-            .flatMap(outcomes -> {
-                final long delivered = outcomes.stream().filter(WebPushSender.Outcome.DELIVERED::equals).count();
-                log.info("Push for [{}] of [{}]: {} of {} browser(s) took it",
-                    notification.getEvent(), notification.getSubject(), delivered, outcomes.size());
-                //a household whose browsers all failed: told once, as a failed transport
-                return delivered == 0 && outcomes.stream().anyMatch(WebPushSender.Outcome.FAILED::equals)
-                    ? Mono.error(new IllegalStateException("No browser at home took the push message"))
-                    : Mono.<Void>empty();
-            });
+            .doOnNext(outcomes -> log.info("Push for [{}] of [{}]: {} of {} browser(s) took it",
+                notification.getEvent(), notification.getSubject(), delivered(outcomes), outcomes.size()))
+            //a household whose browsers all failed: told once, as a failed transport
+            .filter(outcomes -> delivered(outcomes) == 0 && outcomes.contains(WebPushSender.Outcome.FAILED))
+            .flatMap(outcomes -> Mono.error(new IllegalStateException("No browser at home took the push message")));
+    }
+
+    private static long delivered(final List<WebPushSender.Outcome> outcomes) {
+        return outcomes.stream().filter(WebPushSender.Outcome.DELIVERED::equals).count();
     }
 
     private Optional<URI> allowedEndpoint(final PushSubscription subscription) {

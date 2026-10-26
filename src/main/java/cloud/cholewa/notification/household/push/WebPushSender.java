@@ -55,45 +55,47 @@ class WebPushSender {
     //the endpoint as the transport parsed it and checked against the allowed hosts
     Mono<Outcome> send(final URI endpoint, final PushSubscription subscription, final byte[] payload) {
         final String host = endpoint.getHost();
-        //deferred: the encryption and the token throw on keys a browser gave wrong - that is this
-        //subscription failing, never the message
-        return Mono.defer(() -> {
-                final byte[] body;
-                final String authorization;
-                try {
-                    body = encryptor.encrypt(payload, subscription.getKeys().getP256dh(), subscription.getKeys().getAuth());
-                    authorization = signer.authorization(endpoint);
-                } catch (Exception e) {
-                    log.warn("A push message for a browser on [{}] could not be prepared: {} - {}",
-                        host, e.getClass().getSimpleName(), e.getMessage());
-                    return Mono.just(Outcome.FAILED);
-                }
-                return pushWebClient.post()
-                    .uri(endpoint)
-                    .header(HttpHeaders.AUTHORIZATION, authorization)
-                    .header("TTL", String.valueOf(ttl.toSeconds()))
-                    .header("Urgency", "high")
-                    .header(HttpHeaders.CONTENT_ENCODING, "aes128gcm")
-                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                    .bodyValue(body)
-                    .exchangeToMono(response -> response.statusCode().is2xxSuccessful()
-                        ? response.releaseBody().thenReturn(Outcome.DELIVERED)
-                        //a refusal says why in its body (Apple: {"reason":"BadJwtToken"}) - read for the log
-                        : response.bodyToMono(String.class)
-                            // a body that cannot be read (too big, not text) is no reason - and the status still counts
-                            .onErrorReturn("")
-                            .defaultIfEmpty("")
-                            .map(refusal -> outcomeOf(response.statusCode().value(), host, reasonOf(refusal))))
-                    .timeout(TIMEOUT);
-            })
-            //the key pair, the ECDH and the signature are CPU work of a few milliseconds: on the parallel
-            //scheduler, not on the event loop that answered the read of the subscriptions
+        //the encryption and the token throw on keys a browser gave wrong - that is this subscription
+        //failing, never the message. The key pair, the ECDH and the signature are CPU work of a few
+        //milliseconds: on the parallel scheduler, not on the event loop that answered the read before
+        return Mono.fromCallable(() -> new Prepared(
+                encryptor.encrypt(payload, subscription.getKeys().getP256dh(), subscription.getKeys().getAuth()),
+                signer.authorization(endpoint)))
             .subscribeOn(Schedulers.parallel())
-            .onErrorResume(throwable -> {
-                log.warn("A push message for a browser on [{}] got no answer: {} - {}",
-                    host, throwable.getClass().getSimpleName(), throwable.getMessage());
-                return Mono.just(Outcome.FAILED);
-            });
+            .onErrorResume(cause -> Mono.fromRunnable(() -> log.warn(
+                "A push message for a browser on [{}] could not be prepared: {} - {}",
+                host, cause.getClass().getSimpleName(), cause.getMessage())))
+            .flatMap(prepared -> post(endpoint, prepared, host))
+            .defaultIfEmpty(Outcome.FAILED);
+    }
+
+    private Mono<Outcome> post(final URI endpoint, final Prepared prepared, final String host) {
+        return pushWebClient.post()
+            .uri(endpoint)
+            .header(HttpHeaders.AUTHORIZATION, prepared.authorization())
+            .header("TTL", String.valueOf(ttl.toSeconds()))
+            .header("Urgency", "high")
+            .header(HttpHeaders.CONTENT_ENCODING, "aes128gcm")
+            .contentType(MediaType.APPLICATION_OCTET_STREAM)
+            .bodyValue(prepared.body())
+            .exchangeToMono(response -> Mono.just(response)
+                .filter(answer -> answer.statusCode().is2xxSuccessful())
+                .flatMap(delivered -> delivered.releaseBody().thenReturn(Outcome.DELIVERED))
+                //a refusal says why in its body (Apple: {"reason":"BadJwtToken"}) - read for the log; a body
+                //that cannot be read (too big, not text) is no reason, and the status still counts
+                .switchIfEmpty(Mono.defer(() -> response.bodyToMono(String.class)
+                    .onErrorReturn("")
+                    .defaultIfEmpty("")
+                    .map(refusal -> outcomeOf(response.statusCode().value(), host, reasonOf(refusal))))))
+            .timeout(TIMEOUT)
+            .onErrorResume(throwable -> Mono.fromRunnable(() -> log.warn(
+                    "A push message for a browser on [{}] got no answer: {} - {}",
+                    host, throwable.getClass().getSimpleName(), throwable.getMessage()))
+                .thenReturn(Outcome.FAILED));
+    }
+
+    //the encrypted body and the VAPID header of one message for one browser
+    private record Prepared(byte[] body, String authorization) {
     }
 
     private static Outcome outcomeOf(final int status, final String host, final String reason) {

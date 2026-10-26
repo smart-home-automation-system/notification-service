@@ -7,4 +7,9 @@ package cloud.cholewa.notification.household;
  * (HAS-276, title and text) and the SMS to come (HAS-275) word the same message.
  */
 public record HouseholdMessage(String title, String text, String footer, int color) {
+
+    //the same message with more in its footer - the Discord one names who was texted (HAS-275)
+    public HouseholdMessage withFooter(final String more) {
+        return new HouseholdMessage(title, text, footer + " · " + more, color);
+    }
 }

@@ -1,15 +1,13 @@
 package cloud.cholewa.notification.household.push;
 
-import cloud.cholewa.notification.config.InternalServiceProperties;
-import io.netty.channel.ChannelOption;
+import cloud.cholewa.notification.household.members.HouseholdServicesConfig;
+import cloud.cholewa.notification.household.members.PresentMembersClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.netty.http.client.HttpClient;
 import reactor.netty.resources.ConnectionProvider;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -32,19 +30,13 @@ import java.util.regex.Pattern;
  */
 @Configuration
 @ConditionalOnBooleanProperty("household.push.enabled")
-@EnableConfigurationProperties({WebPushProperties.class, InternalServiceProperties.class})
+@EnableConfigurationProperties(WebPushProperties.class)
 class WebPushConfig {
 
     //no quote and no backslash: the subject goes into the JSON of the token as it is
     private static final Pattern SUBJECT = Pattern.compile("^(mailto:[^\\s\"\\\\]+@[^\\s\"\\\\]+|https://[^\\s\"\\\\]+)$");
     private static final Duration PUSH_CONNECT_TIMEOUT = Duration.ofSeconds(5);
     private static final Duration PUSH_RESPONSE_TIMEOUT = Duration.ofSeconds(10);
-
-    //Without a limit an idle connection stays in the pool for ever: after a restart of the target, or
-    //once conntrack has forgotten it, the next call is written onto a dead socket - and a POST is never
-    //repeated (the lesson of the gateway, HAS-212). The same limits as there
-    static final Duration MAX_IDLE_TIME = Duration.ofMinutes(2);
-    static final Duration MAX_LIFE_TIME = Duration.ofMinutes(30);
 
     @Bean
     VapidSigner vapidSigner(final WebPushProperties properties) {
@@ -59,51 +51,14 @@ class WebPushConfig {
     }
 
     @Bean(destroyMethod = "dispose")
-    ConnectionProvider presenceConnectionProvider() {
-        return connectionProvider("presence-service");
-    }
-
-    @Bean(destroyMethod = "dispose")
-    ConnectionProvider databaseConnectionProvider() {
-        return connectionProvider("database-service");
-    }
-
-    @Bean(destroyMethod = "dispose")
     ConnectionProvider pushConnectionProvider() {
-        return connectionProvider("push-services");
-    }
-
-    @Bean
-    WebClient presenceWebClient(
-        final WebClient.Builder webClientBuilder,
-        final ConnectionProvider presenceConnectionProvider,
-        final InternalServiceProperties properties
-    ) {
-        final InternalServiceProperties.Endpoint presence = properties.presence();
-        return webClient(webClientBuilder.baseUrl(presence.url()), presenceConnectionProvider,
-            presence.connectTimeout(), presence.responseTimeout());
-    }
-
-    @Bean
-    WebClient databaseWebClient(
-        final WebClient.Builder webClientBuilder,
-        final ConnectionProvider databaseConnectionProvider,
-        final InternalServiceProperties properties
-    ) {
-        final InternalServiceProperties.Endpoint database = properties.database();
-        return webClient(webClientBuilder.baseUrl(database.url()), databaseConnectionProvider,
-            database.connectTimeout(), database.responseTimeout());
+        return HouseholdServicesConfig.connectionProvider("push-services");
     }
 
     //no base URL: every push service of the allowed hosts is posted to by the address of a subscription
     @Bean
     WebClient pushWebClient(final WebClient.Builder webClientBuilder, final ConnectionProvider pushConnectionProvider) {
-        return webClient(webClientBuilder, pushConnectionProvider, PUSH_CONNECT_TIMEOUT, PUSH_RESPONSE_TIMEOUT);
-    }
-
-    @Bean
-    PresentMembersClient presentMembersClient(@Qualifier("presenceWebClient") final WebClient presenceWebClient) {
-        return new PresentMembersClient(presenceWebClient);
+        return HouseholdServicesConfig.webClient(webClientBuilder, pushConnectionProvider, PUSH_CONNECT_TIMEOUT, PUSH_RESPONSE_TIMEOUT);
     }
 
     @Bean
@@ -163,26 +118,5 @@ class WebPushConfig {
 
     private static boolean isBlank(final String value) {
         return value == null || value.isBlank();
-    }
-
-    private static ConnectionProvider connectionProvider(final String name) {
-        return ConnectionProvider.builder(name)
-            .maxIdleTime(MAX_IDLE_TIME)
-            .maxLifeTime(MAX_LIFE_TIME)
-            .build();
-    }
-
-    private static WebClient webClient(
-        final WebClient.Builder webClientBuilder,
-        final ConnectionProvider connectionProvider,
-        final Duration connectTimeout,
-        final Duration responseTimeout
-    ) {
-        final HttpClient httpClient = HttpClient.create(connectionProvider)
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, Math.toIntExact(connectTimeout.toMillis()))
-            .responseTimeout(responseTimeout);
-        return webClientBuilder
-            .clientConnector(new ReactorClientHttpConnector(httpClient))
-            .build();
     }
 }
