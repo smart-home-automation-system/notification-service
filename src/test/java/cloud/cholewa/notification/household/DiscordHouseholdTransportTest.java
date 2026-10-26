@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -103,6 +104,6 @@ class DiscordHouseholdTransportTest {
         sut.deliver(NOTIFICATION, MESSAGE).as(StepVerifier::create).verifyComplete();
         sut.deliver(NOTIFICATION, MESSAGE).as(StepVerifier::create).verifyComplete();
 
-        verify(discordBotService, org.mockito.Mockito.times(2)).sendHouseholdMessage(MESSAGE);
+        verify(discordBotService, times(2)).sendHouseholdMessage(MESSAGE);
     }
 }

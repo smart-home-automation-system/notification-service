@@ -80,8 +80,11 @@ class SmsApiClientTest {
             .expectNext(false)
             .verifyComplete();
 
-        assertThat(output).contains("refused by SMSAPI: status " + status + ", error " + code);
-        assertThat(output).doesNotContain(PHONE).doesNotContain(TOKEN).doesNotContain("Zmywarka");
+        assertThat(output)
+            .contains("refused by SMSAPI: status " + status + ", error " + code)
+            .doesNotContain(PHONE)
+            .doesNotContain(TOKEN)
+            .doesNotContain("Zmywarka");
     }
 
     @Test

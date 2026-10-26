@@ -94,8 +94,25 @@ class WebPushSender {
                 .thenReturn(Outcome.FAILED));
     }
 
-    //the encrypted body and the VAPID header of one message for one browser
-    private record Prepared(byte[] body, String authorization) {
+    //the encrypted body and the VAPID header of one message for one browser - a class, not a record: a
+    //record of an array compares the reference, never the bytes (Sonar S6218), and nothing compares these
+    private static final class Prepared {
+
+        private final byte[] body;
+        private final String authorization;
+
+        private Prepared(final byte[] body, final String authorization) {
+            this.body = body;
+            this.authorization = authorization;
+        }
+
+        byte[] body() {
+            return body;
+        }
+
+        String authorization() {
+            return authorization;
+        }
     }
 
     private static Outcome outcomeOf(final int status, final String host, final String reason) {
