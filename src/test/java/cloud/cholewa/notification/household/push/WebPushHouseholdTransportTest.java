@@ -90,6 +90,7 @@ class WebPushHouseholdTransportTest {
         assertThat(shown.get("body").asString()).isEqualTo("Koniec pracy: Dishwasher - wymaga opróżnienia.");
         assertThat(shown.get("tag").asString()).isEqualTo("appliance-133");
         assertThat(shown.get("renotify").asBoolean()).isTrue();
+        assertThat(shown.get("requireInteraction").asBoolean()).isTrue();
         assertThat(shown.get("data").get("path").asString()).isEqualTo("/room");
         assertThat(shown.get("data").get("onActionClick").get("default").get("operation").asString())
             .isEqualTo("navigateLastFocusedOrOpen");
@@ -241,8 +242,10 @@ class WebPushHouseholdTransportTest {
             .occurredAt(LocalDateTime.of(2026, 10, 25, 15, 15)).reminder(1).acknowledgePath("/room").build();
 
         assertThat(shown(acknowledged).get("renotify").asBoolean()).isFalse();
+        assertThat(shown(acknowledged).get("requireInteraction").asBoolean()).isFalse();
         assertThat(shown(acknowledged).get("tag").asString()).isEqualTo("appliance-133");
         assertThat(shown(reminder).get("renotify").asBoolean()).isTrue();
+        assertThat(shown(reminder).get("requireInteraction").asBoolean()).isTrue();
     }
 
     //database-service reads at most 20 names at once

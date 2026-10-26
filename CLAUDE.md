@@ -206,7 +206,9 @@ review.
       `tag` is `appliance-<deviceId>` - **no `Topic` header**: Apple answered our `appliance-133` with
       400 `BadWebPushTopic` on the first real push (0.6.1 logs the reason of a refusal, which showed it);
       the tag still replaces the notification on the phone. `renotify` is off for the acknowledgement, which
-      replaces the notification without a sound.
+      replaces the notification without a sound. `requireInteraction` (owner, 2026-10-26: a Chrome banner
+      went after a few seconds) keeps it on the screen until clicked or closed - off for the acknowledgement,
+      ignored by iOS; whether Chrome on Windows honours it is checked on the first push after the release.
     - **A subscription is never logged**: the endpoint is an address anybody could post to that
       browser with. The calls to the push services are kept out of Logbook by
       `logbook.client.predicate.exclude` (a glob on the whole URL) - **a new allowed host needs its
