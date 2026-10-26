@@ -43,6 +43,9 @@ final class PushPayload {
         //a reminder that replaces the notification sounds again - it is meant to; the acknowledgement replaces
         //it silently: nobody has to act on it, and it may come late in the evening
         shown.put("renotify", notification.getEvent() != HouseholdEvent.APPLIANCE_ACKNOWLEDGED);
+        // and it stays on the screen until somebody clicks or closes it (owner, 2026-10-26: a banner of Chrome
+        // went after a few seconds) - the acknowledgement does not wait; iOS ignores the option
+        shown.put("requireInteraction", notification.getEvent() != HouseholdEvent.APPLIANCE_ACKNOWLEDGED);
         shown.put("data", data);
 
         return jsonMapper.writeValueAsBytes(Map.of("notification", shown));

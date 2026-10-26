@@ -91,11 +91,13 @@ on the home screen, permission granted - the subscription is made by the applica
   each of their browsers that subscribed (`GET /home/push-subscriptions?members=` of
   `database-service`, 20 names a read). Nobody at home is no failure - the Discord channel has
   the message; a presence or database read that fails is, and then no push goes out at all.
-- **What**: `{"notification": {title, body, tag, renotify, data}}` - the shape the service worker
+- **What**: `{"notification": {title, body, tag, renotify, requireInteraction, data}}` - the shape the service worker
   of Angular shows by itself; a tap opens `data.onActionClick.default.url`, the page where the
   household acknowledges (`acknowledgePath` of the payload, `/` without one). `tag` is
   `appliance-<deviceId>`, so a reminder replaces the notification of the same appliance, and the
-  acknowledgement replaces it without a sound (`renotify: false`).
+  acknowledgement replaces it without a sound (`renotify: false`). Until it is clicked or closed the
+  notification stays on the screen of a desktop browser (`requireInteraction: true`, not for the
+  acknowledgement; iOS ignores the option).
 - **How**: encrypted per browser by RFC 8291 (`aes128gcm`) and signed by VAPID (RFC 8292), with
   the JDK alone (`WebPushEncryptor`, `VapidSigner`); posted with `TTL` (an hour) and `Urgency: high` - no `Topic`, which
   Apple refuses (`BadWebPushTopic`); the reason a push service gives for a refusal is logged
