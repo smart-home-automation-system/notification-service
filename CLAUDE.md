@@ -21,7 +21,7 @@ review.
   `blinds-service`, `amx-service`. The payload of alert and info is plain text — those
   listeners take a `String` and there is no JSON converter.
 - **Since HAS-274 also `notification.prod.household`** (`notification.dev.household` locally):
-  the JSON `HouseholdNotification` of `smart-home-sdk` 1.14.0, read with the `JsonMapper` of
+  the JSON `HouseholdNotification` of `smart-home-sdk` 1.15.0, read with the `JsonMapper` of
   Spring Boot into the model and validated (`HouseholdNotificationReader`), worded in Polish
   here (`HouseholdMessages`) and delivered by every `HouseholdTransport` (`HouseholdDispatcher`).
   Publisher: `appliance-service` (since its 0.3.0).
@@ -34,10 +34,10 @@ review.
   (`https://api.smsapi.pl/sms.do`).
 - `GET /home/notification/skippy?message=` sends a text by hand, and `?category=household` a
   household test message to the household channel (Discord only; with `sms=true` also an SMS to the
-  administrators, HAS-275). It is deliberately **not**
+  administrators, HAS-275; on the alert call too since HAS-335). It is deliberately **not**
   routed by `api-gateway-service`.
-- Uses libraries: `smart-home-sdk` 1.14.0 (the household models, since HAS-274; `member` since HAS-347) and
-  `cholewa-commons` (1.12.0 since HAS-276; 1.11.0 since HAS-274). The `WebClient`s of the push
+- Uses libraries: `smart-home-sdk` 1.15.0 (the household models, since HAS-274; `member` since HAS-347; 1.15.0 since HAS-335) and
+  `cholewa-commons` (1.13.0 since HAS-335; 1.12.0 since HAS-276; 1.11.0 since HAS-274). The `WebClient`s of the push
   transport are built from the injected builder, so the Logbook filter of the library logs them
   with the `traceId` - there is no own `LogbookClientHandler`, and none may be added (every call
   would be logged twice); there is no `@Scheduled` task. Of what the library
@@ -101,6 +101,25 @@ review.
   building of its request, and the listener chain defers its call into the service as well;
   the ERROR line names the class of the exception, because a fault of the service itself
   often has no message.
+- **An alert or info marked `sms: true` is also texted** (HAS-335, the `...Sms` methods of
+  `cholewa-commons` 1.13.0) - what is easy to break:
+  - The header is read by both listeners like `level` (`"true"` in any case and stripped; anything
+    else, or none, is Discord only). It is not routed by: the broker definitions are unchanged.
+  - **Discord first, then the SMS** (`NotificationMessageService`): the SMS never holds the post back,
+    and it goes out **also when Discord failed after its retries** - then the error of Discord is still
+    signalled, so the listener logs the text at ERROR as before. Keep the `onErrorResume` before the
+    `then`: the other way round a Discord failure would skip the SMS.
+  - **To the administrators with a phone, at home or not** (`MarkedNotificationSms`, the same rule as
+    the smoke test of HAS-275 - `SmsRecipients.administratorsOf`), not the members at home of the
+    household category: a lost grid concerns the owner wherever they are. The list is cached **10 min**
+    (`Mono.cache`, a failed read not kept); every read is logged with the number of administrators -
+    the proof of the registry read in the log.
+  - **It never fails**: no administrator with a phone is one WARN, the registry or SMSAPI failing an
+    ERROR line with the text; nothing is retried (the task text said "retried like Discord", the rule of
+    `SmsApiClient` since HAS-275 - an SMS sent twice costs twice - won). SMS switched off: a WARN,
+    Discord only.
+  - The text is `<LEVEL>: <message>`, cut to 160 code points with `...` (`SmsText.of(level, message)`): no
+    brackets (a GSM escape each) and no `…` (Unicode, 70 a part) - a message of GSM characters stays one part; one `°` or Polish letter in it makes it Unicode, up to three.
 - **The queues have a one-hour TTL**, so a notification published while this service is down
   for longer is gone. Publishers that care repeat it themselves (`heating-service` reminds
   every 24 h).

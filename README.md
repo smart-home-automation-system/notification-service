@@ -46,10 +46,28 @@ does not start without it. The channel is deliberately not looked up by name: li
 channels makes discord4j decode every channel of the server, and one it cannot decode fails
 the delivery (0.3.0 delivered nothing for that reason).
 
+**An alert or an info marked for an SMS** (since HAS-335): a publisher that sets the header
+**`sms` to `true`** - `publishAlertSms`, `publishReminderSms` and `publishInfoSms` of the
+`NotificationPublisher` of `cholewa-commons` >= 1.13.0 - gets the message posted to Discord as
+usual and **then texted to the administrators of the household** with a phone, at home or not:
+`ERROR: <message>` (the level as the embed titles it; only GSM characters added, so a message of GSM characters stays one SMS part - a `°` or a Polish letter makes it Unicode, up to three), cut to 160 characters. The header is not
+routed by - a marked message lands in the same queue - and a missing header or any other value
+means Discord only. For the few messages nobody may miss (a lost grid, a planned outage): an SMS
+costs and wakes somebody.
+
+- The SMS goes **after** the Discord post and never holds it back; it goes out **also when Discord
+  failed for good**, when it matters most. It never fails the message: no administrator with a
+  phone is one WARN, a registry that cannot be read or a refusal of SMSAPI an ERROR line holding
+  the text. Nothing is retried (an SMS sent twice costs twice).
+- The administrators are read from `GET /home/household` of `database-service` and kept for
+  **10 minutes** (a failed read is not kept); each read is logged with their number.
+- With the SMS switched off (`household.sms.enabled`) a marked message goes to Discord alone, with a
+  WARN.
+
 **The household category** (since 0.5.0, HAS-274) is for the people who live in the house, in
 Polish, on a Discord channel of its own (`discord.bot.skippy.household-channel-id`, environment
 variable `discord_household_channel_id`, mandatory like the alerts channel). Its payload is the
-JSON `HouseholdNotification` of `smart-home-sdk` 1.14.0 - what happened to which device, never a
+JSON `HouseholdNotification` of `smart-home-sdk` 1.15.0 - what happened to which device, never a
 text: the words are composed here (`HouseholdMessages`), one embed per message with the device as
 the title, the sentence as the description, the time of the house (`dd.MM.yyyy HH:mm`) in the
 footer and the bar colored by the event. The three appliances of the registry are told by their
@@ -124,7 +142,7 @@ Base path `/home/notification` (`spring.webflux.base-path`). The endpoint is not
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/home/notification/skippy?message=<text>&level=<error\|warn\|info>` | Send `message` to the Discord `alerts` channel; `level` is optional and defaults to `info`. Returns `200 OK`; the `message` query parameter is required (`400 Bad Request` when missing); `502 Bad Gateway` when Discord refuses the request (a wrong channel id included). |
+| `GET` | `/home/notification/skippy?message=<text>&level=<error\|warn\|info>` | Send `message` to the Discord `alerts` channel; `level` is optional and defaults to `info`. With `sms=true` (since HAS-335) the path of a marked message: the post, then `<LEVEL>: <message>` by SMS to the administrators of the household. Returns `200 OK`; the `message` query parameter is required (`400 Bad Request` when missing); `409` for `sms=true` while the SMS is switched off; `502 Bad Gateway` when Discord refuses the request (a wrong channel id included). |
 | `GET` | `/home/notification/skippy?category=household&event=<event>&subject=<device>&reminder=<n>&member=<name>` | The smoke test of the household channel (since 0.5.0): a household notification of a made-up device, worded as the queue words one and posted to the household channel - **Discord only** by default, never the push. With `sms=true` (since HAS-275) the same words also go by SMS to the **administrators** of the household, at home or not - one SMS to the owner, never to every member. `event` defaults to `appliance finished`, `subject` to `Zmywarka` (3-50 characters), `reminder` to `0` (0-10); `member` (3-50, optional, HAS-347) names who acknowledged it. `200 OK`; `400` for an unknown event or a bound broken; `409` for `sms=true` while the SMS is switched off; `502` when Discord refuses. |
 
 # Messaging
@@ -135,8 +153,8 @@ infrastructure — this service only consumes.
 
 | Queue | Property | Payload | Handler |
 |---|---|---|---|
-| `notification.prod.alert` / `notification.dev.alert` | `rabbit.alert.queue` | `String` (plain text), optional header `level` (default `error`) | `RabbitNotificationConsumer#consumeAlertMessage` |
-| `notification.prod.info` / `notification.dev.info` | `rabbit.info.queue` | `String` (plain text), optional header `level` (default `info`) | `RabbitNotificationConsumer#consumeInfoMessage` |
+| `notification.prod.alert` / `notification.dev.alert` | `rabbit.alert.queue` | `String` (plain text), optional headers `level` (default `error`) and `sms` (`true`: also an SMS, HAS-335) | `RabbitNotificationConsumer#consumeAlertMessage` |
+| `notification.prod.info` / `notification.dev.info` | `rabbit.info.queue` | `String` (plain text), optional headers `level` (default `info`) and `sms` (`true`: also an SMS, HAS-335) | `RabbitNotificationConsumer#consumeInfoMessage` |
 | `notification.prod.household` / `notification.dev.household` | `rabbit.household.queue` | JSON `HouseholdNotification` (since 0.5.0); a payload that is not the model, or breaks its bounds, is logged at ERROR and acknowledged | `RabbitNotificationConsumer#consumeHouseholdMessage` |
 
 The `dev` queues are used in the `local` profile. Publishers send `text/plain`; the only one

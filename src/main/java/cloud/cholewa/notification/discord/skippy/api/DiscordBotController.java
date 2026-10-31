@@ -4,6 +4,7 @@ import cloud.cholewa.home.model.HouseholdEvent;
 import cloud.cholewa.home.model.HouseholdNotification;
 import cloud.cholewa.notification.discord.skippy.service.DiscordBotService;
 import cloud.cholewa.notification.household.HouseholdMessages;
+import cloud.cholewa.notification.household.sms.MarkedNotificationSms;
 import cloud.cholewa.notification.household.sms.SmsSmoke;
 import cloud.cholewa.notification.model.NotificationLevel;
 import jakarta.validation.constraints.Max;
@@ -29,7 +30,8 @@ import java.time.ZoneId;
  * {@code category=household} (HAS-274) - a household notification of a made-up device, worded as
  * the household queue words one and posted to the household channel. Apart, so that the
  * parameters of one are neither read nor checked on a call of the other. Discord only, never the
- * push of the household; the SMS only with {@code sms=true}, to the administrators alone (HAS-275).
+ * push of the household; the SMS only with {@code sms=true}, to the administrators alone (HAS-275) - on
+ * both mappings since HAS-335.
  */
 @RestController
 @RequiredArgsConstructor
@@ -38,13 +40,31 @@ public class DiscordBotController {
 
     private final DiscordBotService service;
     private final ObjectProvider<SmsSmoke> smsSmoke;
+    private final ObjectProvider<MarkedNotificationSms> markedNotificationSms;
 
+    //with sms=true (HAS-335) the path of a marked alert: the Discord post, then the same text by SMS to the
+    //administrators - refused while the SMS is switched off
     @GetMapping
     Mono<ResponseEntity<Void>> sendMessage(
         @RequestParam final String message,
-        @RequestParam(required = false) final String level
+        @RequestParam(required = false) final String level,
+        @RequestParam(defaultValue = "false") final boolean sms
     ) {
-        return service.sendMessage(NotificationLevel.of(level, NotificationLevel.INFO), message)
+        final NotificationLevel notificationLevel = NotificationLevel.of(level, NotificationLevel.INFO);
+        final Mono<MarkedNotificationSms> texting = Mono.just(sms)
+            .filter(Boolean::booleanValue)
+            .flatMap(asked -> Mono.justOrEmpty(markedNotificationSms.getIfAvailable())
+                .switchIfEmpty(Mono.error(() ->
+                    new ResponseStatusException(HttpStatus.CONFLICT, "the SMS is switched off"))))
+            .cache();
+        //as a marked message on the queue: the SMS also when the post failed, and the failure still answered
+        final Mono<Void> text = texting.flatMap(markedSms -> markedSms.send(notificationLevel, message));
+        return texting
+            .then(Mono.defer(() -> service.sendMessage(notificationLevel, message)))
+            .onErrorResume(
+                failure -> !(failure instanceof ResponseStatusException),
+                failure -> text.then(Mono.error(failure)))
+            .then(text)
             .thenReturn(ResponseEntity.ok().build());
     }
 

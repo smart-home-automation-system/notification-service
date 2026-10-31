@@ -74,7 +74,7 @@ class RabbitNotificationConsumerTest {
     })
     void should_listen_on_its_own_queue(final String method, final String queue) throws NoSuchMethodException {
         final RabbitListener listener = RabbitNotificationConsumer.class
-            .getDeclaredMethod(method, String.class, String.class)
+            .getDeclaredMethod(method, String.class, String.class, String.class)
             .getAnnotation(RabbitListener.class);
 
         assertThat(listener.queues()).containsExactly(queue);
@@ -99,13 +99,13 @@ class RabbitNotificationConsumerTest {
         final String level,
         final NotificationLevel expected
     ) {
-        when(notificationMessageService.processMessage(expected, MESSAGE)).thenReturn(Mono.empty());
+        when(notificationMessageService.processMessage(expected, MESSAGE, false)).thenReturn(Mono.empty());
 
         consume(category, level)
             .as(StepVerifier::create)
             .verifyComplete();
 
-        verify(notificationMessageService).processMessage(expected, MESSAGE);
+        verify(notificationMessageService).processMessage(expected, MESSAGE, false);
         verifyNoMoreInteractions(notificationMessageService);
     }
 
@@ -119,7 +119,7 @@ class RabbitNotificationConsumerTest {
         final NotificationLevel defaultLevel,
         final String expectedLog
     ) {
-        when(notificationMessageService.processMessage(defaultLevel, MESSAGE)).thenReturn(Mono.empty());
+        when(notificationMessageService.processMessage(defaultLevel, MESSAGE, false)).thenReturn(Mono.empty());
 
         consume(category, null)
             .as(StepVerifier::create)
@@ -142,7 +142,7 @@ class RabbitNotificationConsumerTest {
         final NotificationLevel defaultLevel,
         final String expectedLog
     ) {
-        when(notificationMessageService.processMessage(defaultLevel, MESSAGE))
+        when(notificationMessageService.processMessage(defaultLevel, MESSAGE, false))
             .thenReturn(Mono.error(new RuntimeException("Error")));
 
         consume(category, null)
@@ -167,7 +167,7 @@ class RabbitNotificationConsumerTest {
         final NotificationLevel defaultLevel,
         final String expectedLog
     ) {
-        when(notificationMessageService.processMessage(defaultLevel, MESSAGE))
+        when(notificationMessageService.processMessage(defaultLevel, MESSAGE, false))
             .thenThrow(new RuntimeException("Error"));
 
         consume(category, null)
@@ -236,9 +236,47 @@ class RabbitNotificationConsumerTest {
             .containsExactly("Household message not delivered: " + HOUSEHOLD + " - IllegalStateException: broken");
     }
 
+    //HAS-335: the header sms of cholewa-commons 1.13.0 - "true" marks the message, whatever its case; missing
+    //or anything else leaves it to Discord alone
+    @ParameterizedTest
+    @CsvSource(value = {
+        "alert, true, true",
+        "info, true, true",
+        "alert, TRUE, true",
+        "info, ' true ', true",
+        "alert, false, false",
+        "info, yes, false",
+        "alert, NULL, false"
+    }, nullValues = "NULL")
+    void should_pass_on_whether_the_publisher_marked_the_message_for_an_sms(
+        final String category,
+        final String sms,
+        final boolean marked
+    ) {
+        final NotificationLevel level = ALERT.equals(category) ? NotificationLevel.ERROR : NotificationLevel.INFO;
+        when(notificationMessageService.processMessage(level, MESSAGE, marked)).thenReturn(Mono.empty());
+
+        (ALERT.equals(category) ? sut.consumeAlertMessage(MESSAGE, null, sms) : sut.consumeInfoMessage(MESSAGE, null, sms))
+            .as(StepVerifier::create)
+            .verifyComplete();
+
+        verify(notificationMessageService).processMessage(level, MESSAGE, marked);
+    }
+
+    @Test
+    void should_log_that_a_received_message_was_marked_for_an_sms() {
+        when(notificationMessageService.processMessage(NotificationLevel.INFO, MESSAGE, true)).thenReturn(Mono.empty());
+
+        sut.consumeInfoMessage(MESSAGE, null, "true").as(StepVerifier::create).verifyComplete();
+
+        assertThat(logs.list)
+            .extracting(ILoggingEvent::getFormattedMessage)
+            .contains("Received info message marked for an SMS: " + MESSAGE);
+    }
+
     private Mono<Void> consume(final String category, final String level) {
         return ALERT.equals(category)
-            ? sut.consumeAlertMessage(MESSAGE, level)
-            : sut.consumeInfoMessage(MESSAGE, level);
+            ? sut.consumeAlertMessage(MESSAGE, level, null)
+            : sut.consumeInfoMessage(MESSAGE, level, null);
     }
 }
