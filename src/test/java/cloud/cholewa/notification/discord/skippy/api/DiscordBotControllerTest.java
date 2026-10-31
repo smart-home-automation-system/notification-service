@@ -127,6 +127,17 @@ class DiscordBotControllerTest {
         verifyNoInteractions(discordBotService);
     }
 
+    // HAS-335: the same for the smoke test of a marked alert
+    @Test
+    void should_refuse_a_marked_alert_test_while_the_sms_is_switched_off() {
+        webTestClient.get()
+            .uri("/skippy?message=The grid is lost&sms=true")
+            .exchange()
+            .expectStatus().isEqualTo(409);
+
+        verifyNoInteractions(discordBotService);
+    }
+
     //the household parameters belong to the household mapping: an alert call is not checked against them
     @Test
     void should_send_an_alert_whatever_household_parameters_come_with_it() {

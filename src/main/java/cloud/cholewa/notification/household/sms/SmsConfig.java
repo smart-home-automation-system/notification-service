@@ -59,6 +59,11 @@ class SmsConfig {
     }
 
     @Bean
+    MarkedNotificationSms markedNotificationSms(final HouseholdRegistryClient registry, final SmsApiClient smsApiClient) {
+        return new MarkedNotificationSms(registry, smsApiClient);
+    }
+
+    @Bean
     SmsSmoke smsSmoke(final HouseholdRegistryClient registry, final SmsApiClient smsApiClient) {
         return new SmsSmoke(registry, smsApiClient);
     }

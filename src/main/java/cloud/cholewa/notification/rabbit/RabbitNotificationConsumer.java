@@ -23,6 +23,9 @@ import reactor.core.publisher.Mono;
 public class RabbitNotificationConsumer {
 
     static final String LEVEL_HEADER = "level";
+    //HAS-335: set to "true" by the ...Sms methods of the NotificationPublisher of cholewa-commons >= 1.13.0;
+    //not routed by, read like the level. Missing or any other value: Discord only
+    static final String SMS_HEADER = "sms";
 
     private final NotificationMessageService notificationMessageService;
     private final HouseholdNotificationReader householdNotificationReader;
@@ -31,17 +34,19 @@ public class RabbitNotificationConsumer {
     @RabbitListener(queues = "${rabbit.alert.queue}")
     Mono<Void> consumeAlertMessage(
         @Payload final String message,
-        @Header(name = LEVEL_HEADER, required = false) final String level
+        @Header(name = LEVEL_HEADER, required = false) final String level,
+        @Header(name = SMS_HEADER, required = false) final String sms
     ) {
-        return consume(Category.ALERT, message, level);
+        return consume(Category.ALERT, message, level, sms);
     }
 
     @RabbitListener(queues = "${rabbit.info.queue}")
     Mono<Void> consumeInfoMessage(
         @Payload final String message,
-        @Header(name = LEVEL_HEADER, required = false) final String level
+        @Header(name = LEVEL_HEADER, required = false) final String level,
+        @Header(name = SMS_HEADER, required = false) final String sms
     ) {
-        return consume(Category.INFO, message, level);
+        return consume(Category.INFO, message, level, sms);
     }
 
     //The household category (HAS-274): a third listener with a container of its own, for the
@@ -66,12 +71,14 @@ public class RabbitNotificationConsumer {
             .contextCapture();
     }
 
-    private Mono<Void> consume(final Category category, final String message, final String level) {
+    private Mono<Void> consume(final Category category, final String message, final String level, final String sms) {
+        final boolean marked = sms != null && "true".equalsIgnoreCase(sms.strip());
         //deferred, so that an exception thrown on the way ends in the onErrorResume below like
         //a signalled one, instead of leaving the listener method
         return Mono.defer(() -> notificationMessageService
-                .processMessage(NotificationLevel.of(level, category.defaultLevel), message))
-            .doOnSubscribe(subscription -> log.info("Received {} message: {}", category.received, message))
+                .processMessage(NotificationLevel.of(level, category.defaultLevel), message, marked))
+            .doOnSubscribe(subscription -> log.info(
+                "Received {} message{}: {}", category.received, marked ? " marked for an SMS" : "", message))
             //the delivery was already retried; an error signal here would make the container hand
             //the message back to the broker and receive it again at once. The text goes into the
             //log, because from this point the log is the only place the notification still exists
