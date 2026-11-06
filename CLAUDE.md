@@ -25,6 +25,8 @@ review.
   Spring Boot into the model and validated (`HouseholdNotificationReader`), worded in Polish
   here (`HouseholdMessages`) and delivered by every `HouseholdTransport` (`HouseholdDispatcher`).
   Publisher: `appliance-service` (since its 0.3.0).
+- **Since HAS-410 the SMS of the household requests** (package `household.requests`), the first
+  `@Scheduled` task - see Specifics.
 - Calls: the Discord REST API. Alerts and infos go to the text channel `alerts`, the household
   category to a channel of its own; both are configured by id. **Since HAS-276 also**, for the
   Web Push of the household category: `presence-service` (`GET /home/presence/residents/presence`)
@@ -36,11 +38,12 @@ review.
   household test message to the household channel (Discord only; with `sms=true` also an SMS to the
   administrators, HAS-275; on the alert call too since HAS-335). It is deliberately **not**
   routed by `api-gateway-service`.
-- Uses libraries: `smart-home-sdk` 1.15.0 (the household models, since HAS-274; `member` since HAS-347; 1.15.0 since HAS-335) and
+- Uses libraries: `smart-home-sdk` 1.17.0 (the household models, since HAS-274; `member` since HAS-347; 1.15.0 since HAS-335; `MemberRequest` of 1.17.0 since HAS-410) and
   `cholewa-commons` (1.13.0 since HAS-335; 1.12.0 since HAS-276; 1.11.0 since HAS-274). The `WebClient`s of the push
   transport are built from the injected builder, so the Logbook filter of the library logs them
   with the `traceId` - there is no own `LogbookClientHandler`, and none may be added (every call
-  would be logged twice); there is no `@Scheduled` task. Of what the library
+  would be logged twice); one `@Scheduled` task since HAS-410 (the requests SMS, bounded with
+  `ScheduledPass` of the library). Of what the library
   auto-configures, the error handling, `DownstreamErrors` and the name of the RabbitMQ connection
   are used (see Specifics); its `NotificationPublisher` is opt-in and stays off — this service is the
   consumer of the notifications. There is no database. The English Bean Validation messages
@@ -248,6 +251,30 @@ review.
     directly - a smoke test must not send an SMS or wake a phone. A mapping of its own
     (`params = "category=household"`, the value as written): the alert call neither reads nor
     checks the household parameters.
+- **The SMS of the household requests** (HAS-410, epic HAS-407, `database-service` >= 0.22.0) - what is easy
+  to break:
+  - **The first `@Scheduled` task**: `SchedulingConfig` (`@EnableScheduling` under `@Profile("!test")` - a
+    context test schedules nothing) and `RequestsSmsSchedule`, only with `household.requests.enabled` (on in
+    the shared document, off in `local` and `test`), cron `household.requests.send-at` **in
+    `household.requests.zone`** - the pod runs in UTC, so without the zone 08:00 would be 09:00 or 10:00 of the
+    house (`RequestsScheduleTest` pins 07:00 UTC on the day the clocks go back). Bounded at 2 min.
+  - **`RequestsSmsPass` never fails** and texts **every recipient, at home or not** (the owner's decision),
+    one after the other: the pending requests (`PendingRequestsClient`, read into `MemberRequest` of the SDK -
+    no enum in it), the phones from `HouseholdRegistryClient` (matched whatever the case). A recipient not
+    in the registry, switched off or without a phone is a WARN and stays pending.
+  - **Only the ids of an accepted SMS are marked sent, at once after that SMS** (a `PUT` per recipient, not
+    one at the end as the task said - the review of HAS-410: the bound of 2 min could cut a pass between the
+    SMS and the marking, and they would go out again); a marking that fails is an ERROR with the ids, and the
+    next morning repeats that SMS once (accepted: an SMS twice beats one never). An accepted SMS counts in
+    the outcome whatever its marking.
+  - **One pass at a time** (`running`, an `AtomicBoolean`): the manual trigger during the 08:00 pass, or the
+    other way round, does nothing - both would read the same pending requests and text everybody twice.
+  - **The words** (`RequestsSmsText`, written out in its test; the owner's call on a real SMS): not cut to
+    160 like `SmsText` - kept whole up to 201 code points (3 Unicode parts), the rest `i jeszcze N`, only
+    what the text carries marked. The text is never logged.
+  - **`POST /requests/send`** runs the same pass by hand (not routed, next to `/skippy`): it texts every
+    member with a pending request - the check after a deploy, not a smoke test.
+  - `SmsApiClient` is public since HAS-410 (the pass lives in another package); nothing else of it changed.
 - **Surefire activates the `test` profile for every class**; that document excludes
   `RabbitAutoConfiguration`, so no test needs a broker, and switches the console logs back to
   plain text. `RabbitConnectionNameTest` puts the auto-configuration back for its own contexts

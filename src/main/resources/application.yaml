@@ -96,6 +96,13 @@ household:
     token: ${smsapi-token:}
     connect-timeout: 5s
     response-timeout: 15s
+  # the SMS of the household requests (HAS-410): every day at send-at in the zone of the house - the pod runs
+  # in UTC - the pending requests of database-service texted to their recipients and marked sent. A cron of
+  # Spring, six fields. POST /home/notification/requests/send runs the same pass by hand
+  requests:
+    enabled: true
+    send-at: "0 0 8 * * *"
+    zone: Europe/Warsaw
 
 # the services this one calls inside the cluster, over k8s DNS. A bare number of a timeout is seconds
 internal:
@@ -170,6 +177,9 @@ household:
   # household.sms switch it on
   sms:
     enabled: ${sms-enabled:false}
+  # and no daily SMS of the requests - the manual trigger still runs it, if the SMS is switched on
+  requests:
+    enabled: false
 
 ---
 
@@ -203,3 +213,5 @@ household:
   sms:
     enabled: false
     url: http://localhost:1
+  requests:
+    enabled: false
