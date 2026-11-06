@@ -19,6 +19,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -145,11 +146,11 @@ class RequestsSmsPassTest {
 
         slow.tryEmitValue(List.of(request(1, "Borys", "chleb", "Liwia")));
         org.assertj.core.api.Assertions.assertThat(first.get()).isEqualTo(new RequestsSmsPass.Outcome(1, 1));
-        verify(sms, org.mockito.Mockito.times(1)).send(anyString(), anyString(), anyString());
+        verify(sms, times(1)).send(anyString(), anyString(), anyString());
         //and once it is over, the next pass runs again
         when(pending.pending()).thenReturn(Mono.just(List.of()));
         sut.run().as(StepVerifier::create).expectNext(RequestsSmsPass.Outcome.NOTHING).verifyComplete();
-        verify(pending, org.mockito.Mockito.times(2)).pending();
+        verify(pending, times(2)).pending();
     }
 
     //an accepted SMS counts even when its requests carry no id to mark

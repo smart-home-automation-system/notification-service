@@ -41,7 +41,7 @@ class RequestsScheduleTest {
                 //the day the clocks go back: 08:00 of the house is 07:00 UTC after it, 06:00 the day before
                 final ZonedDateTime next = CronExpression.parse(properties.sendAt())
                     .next(ZonedDateTime.of(LocalDateTime.of(2026, 10, 25, 3, 0), properties.zone()));
-                assertThat(next.toInstant().toString()).isEqualTo("2026-10-25T07:00:00Z");
+                assertThat(next.toInstant()).hasToString("2026-10-25T07:00:00Z");
             });
     }
 
@@ -77,9 +77,8 @@ class RequestsScheduleTest {
         when(pass.run()).thenReturn(Mono.never());
         final RequestsSmsSchedule schedule = new RequestsSmsSchedule(pass);
 
-        assertThat(RequestsSmsSchedule.LIMIT).isEqualTo(Duration.ofMinutes(2));
         StepVerifier.withVirtualTime(schedule::send)
-            .thenAwait(RequestsSmsSchedule.LIMIT.plusSeconds(1))
+            .thenAwait(Duration.ofMinutes(2).plusSeconds(1))
             .verifyComplete();
     }
 

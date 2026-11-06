@@ -5,6 +5,7 @@ import cloud.cholewa.home.model.MemberRequest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 /**
  * The words of the SMS of the household requests (HAS-410), in Polish:
@@ -52,8 +53,9 @@ final class RequestsSmsText {
     }
 
     private static String itemOf(final String recipient, final MemberRequest request) {
-        final String author = request.getAuthor();
-        final boolean own = author == null || author.toLowerCase(Locale.ROOT).equals(recipient.toLowerCase(Locale.ROOT));
+        //an author the answer leaves out is no other member: nothing in brackets
+        final String author = Objects.toString(request.getAuthor(), "");
+        final boolean own = author.isEmpty() || author.toLowerCase(Locale.ROOT).equals(recipient.toLowerCase(Locale.ROOT));
         return own ? request.getText() : request.getText() + " (" + author + ")";
     }
 }
