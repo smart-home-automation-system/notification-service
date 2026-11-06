@@ -135,6 +135,30 @@ on the home screen, permission granted - the subscription is made by the applica
   `web-push generate-vapid-keys` prints it). The service refuses to start with push on and a
   key, the pair or the subject wrong.
 
+
+### The household requests by SMS
+
+Since 0.9.0 (HAS-410, epic HAS-407) the service texts the **household requests** - errands one member
+writes for another in the dashboard, stored by `database-service` >= 0.22.0 - **every day at 08:00 of the
+house**, the first scheduled task of the service:
+
+- The pending requests are read (`GET /home/household/requests?pending=true`: open, not texted yet, of
+  every member switched on) and **one SMS goes to each recipient, at home or not**:
+  `Zapotrzebowanie na dziś: papier toaletowy (Liwia), żel pod prysznic (Borys)` - the author in brackets
+  only when it is not the recipient. A list in Polish is a Unicode SMS (70 characters a part): it is kept
+  whole up to 3 parts (201 characters), the rest replaced by `i jeszcze N` - those go out the next day.
+- **Only what SMSAPI accepted is marked sent** (`PUT /home/household/requests/sent`), at once after each
+  SMS - a pass cut off by its bound of 2 min never leaves a texted request unmarked - so every request is
+  texted once. One pass at a time: the manual trigger during the 08:00 pass does nothing. A recipient not in the registry, switched off or without a phone is a WARN and their
+  requests stay pending. A marking that fails after an accepted SMS is an ERROR with the ids: that SMS
+  goes out once more the next morning.
+- SMS only - no Discord, no push. Nothing is retried, as for every SMS here.
+- **Configuration**: `household.requests.enabled` (on in the shared document, off locally and in the
+  tests), `household.requests.send-at` (a cron of Spring, `0 0 8 * * *`) and `household.requests.zone`
+  (`Europe/Warsaw` - the pod runs in UTC). None is a secret. It needs the SMS switched on
+  (`household.sms.enabled`); without it the pass is one WARN.
+- `POST /home/notification/requests/send` runs the same pass by hand (below).
+
 # API
 
 Base path `/home/notification` (`spring.webflux.base-path`). The endpoint is not routed by
@@ -143,6 +167,7 @@ Base path `/home/notification` (`spring.webflux.base-path`). The endpoint is not
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/home/notification/skippy?message=<text>&level=<error\|warn\|info>` | Send `message` to the Discord `alerts` channel; `level` is optional and defaults to `info`. With `sms=true` (since HAS-335) the path of a marked message: the post, then `<LEVEL>: <message>` by SMS to the administrators of the household. Returns `200 OK`; the `message` query parameter is required (`400 Bad Request` when missing); `409` for `sms=true` while the SMS is switched off; `502 Bad Gateway` when Discord refuses the request (a wrong channel id included). |
+| `POST` | `/home/notification/requests/send` | The SMS of the household requests by hand (since 0.9.0, HAS-410) - the check of the minute after a deploy: runs the pass of 08:00 once - every member with a pending request is texted - and answers `202 Accepted` with `{"sms": <accepted>, "marked": <requests marked sent>}`. Not routed by the gateway (a port-forward). Never fails: what went wrong is in the log; with the SMS switched off it texts nothing and answers `0`. |
 | `GET` | `/home/notification/skippy?category=household&event=<event>&subject=<device>&reminder=<n>&member=<name>` | The smoke test of the household channel (since 0.5.0): a household notification of a made-up device, worded as the queue words one and posted to the household channel - **Discord only** by default, never the push. With `sms=true` (since HAS-275) the same words also go by SMS to the **administrators** of the household, at home or not - one SMS to the owner, never to every member. `event` defaults to `appliance finished`, `subject` to `Zmywarka` (3-50 characters), `reminder` to `0` (0-10); `member` (3-50, optional, HAS-347) names who acknowledged it. `200 OK`; `400` for an unknown event or a bound broken; `409` for `sms=true` while the SMS is switched off; `502` when Discord refuses. |
 
 # Messaging

@@ -25,7 +25,7 @@ import java.time.Duration;
  * twice and reaches somebody twice.
  */
 @Slf4j
-class SmsApiClient {
+public class SmsApiClient {
 
     static final Duration TIMEOUT = Duration.ofSeconds(20);
 
@@ -47,7 +47,7 @@ class SmsApiClient {
     }
 
     /** @param member who the number belongs to - for the log, which never holds the number */
-    Mono<Boolean> send(final String member, final String phone, final String text) {
+    public Mono<Boolean> send(final String member, final String phone, final String text) {
         final MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("to", phone);
         form.add("message", text);
