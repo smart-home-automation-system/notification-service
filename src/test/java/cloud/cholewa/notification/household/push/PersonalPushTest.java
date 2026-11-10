@@ -15,7 +15,6 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -102,6 +101,6 @@ class PersonalPushTest {
         when(subscriptions.remove(APPLE)).thenReturn(Mono.empty());
 
         sut.send("Liwia", REMINDER).as(StepVerifier::create).expectNext(PersonalPush.Result.NO_SUBSCRIPTION).verifyComplete();
-        verify(subscriptions).remove(eq(APPLE));
+        verify(subscriptions).remove(APPLE);
     }
 }

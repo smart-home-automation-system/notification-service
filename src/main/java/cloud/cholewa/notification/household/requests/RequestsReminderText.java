@@ -23,9 +23,9 @@ import java.util.Objects;
 final class RequestsReminderText {
 
     static final String MY_ROOM = "/room";
-    static final String DONE = "Zrobione: ";
-    static final String REMINDER = "Czy zrobione? Odhacz w aplikacji: ";
-    static final String STALE = "Wciąż otwarte: ";
+    static final String DONE_HEADER = "Zrobione: ";
+    static final String REMINDER_HEADER = "Czy zrobione? Odhacz w aplikacji: ";
+    static final String STALE_HEADER = "Wciąż otwarte: ";
 
     private RequestsReminderText() {
     }
@@ -35,17 +35,17 @@ final class RequestsReminderText {
     }
 
     static Composed done(final List<MemberRequest> requests) {
-        return composed("Zrobione", DONE, "requests-done", false, requests,
+        return composed("Zrobione", DONE_HEADER, "requests-done", false, requests,
             requests.stream().map(request -> named(request, request.getDoneBy())).toList());
     }
 
     static Composed reminder(final String recipient, final List<MemberRequest> requests) {
-        return composed("Czy zrobione?", REMINDER, "requests-reminder", true, requests,
+        return composed("Czy zrobione?", REMINDER_HEADER, "requests-reminder", true, requests,
             requests.stream().map(request -> RequestsSmsText.itemOf(recipient, request)).toList());
     }
 
     static Composed stale(final List<MemberRequest> requests) {
-        return composed("Wciąż otwarte", STALE, "requests-stale", false, requests,
+        return composed("Wciąż otwarte", STALE_HEADER, "requests-stale", false, requests,
             requests.stream().map(request -> named(request, request.getMember())).toList());
     }
 

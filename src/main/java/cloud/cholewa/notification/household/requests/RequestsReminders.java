@@ -139,7 +139,7 @@ public class RequestsReminders {
     }
 
     private static boolean own(final MemberRequest request) {
-        return request.getAuthor() != null && request.getAuthor().equalsIgnoreCase(Objects.toString(request.getMember(), ""));
+        return key(request.getAuthor()).equals(key(request.getMember()));
     }
 
     private Mono<Outcome> tellEach(final Kind kind, final List<MemberRequest> found, final List<Member> members) {
