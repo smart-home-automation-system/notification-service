@@ -10,10 +10,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.net.URI;
 import java.util.List;
-import java.util.Locale;
-import java.util.Optional;
 
 /**
  * The household message as a push notification on the phones of the members at home (HAS-276): the
@@ -39,7 +36,7 @@ class WebPushHouseholdTransport implements HouseholdTransport {
     private final PresentMembersClient presentMembers;
     private final PushSubscriptionsClient subscriptions;
     private final WebPushSender sender;
-    private final List<String> allowedHosts;
+    private final AllowedEndpoints allowedEndpoints;
     private final JsonMapper jsonMapper;
 
     WebPushHouseholdTransport(
@@ -52,7 +49,7 @@ class WebPushHouseholdTransport implements HouseholdTransport {
         this.presentMembers = presentMembers;
         this.subscriptions = subscriptions;
         this.sender = sender;
-        this.allowedHosts = allowedHosts.stream().map(host -> host.strip().toLowerCase(Locale.ROOT)).toList();
+        this.allowedEndpoints = new AllowedEndpoints(allowedHosts);
         this.jsonMapper = jsonMapper;
     }
 
@@ -84,7 +81,7 @@ class WebPushHouseholdTransport implements HouseholdTransport {
         final byte[] payload = PushPayload.of(notification, message, jsonMapper);
 
         return Flux.fromIterable(found)
-            .flatMap(subscription -> Mono.justOrEmpty(allowedEndpoint(subscription))
+            .flatMap(subscription -> Mono.justOrEmpty(allowedEndpoints.of(subscription))
                 .flatMap(endpoint -> sender.send(endpoint, subscription, payload))
                 //a dropped subscription is removed from the registry, and still counted as what it came to
                 .flatMap(outcome -> Mono.just(outcome)
@@ -102,24 +99,6 @@ class WebPushHouseholdTransport implements HouseholdTransport {
 
     private static long delivered(final List<WebPushSender.Outcome> outcomes) {
         return outcomes.stream().filter(WebPushSender.Outcome.DELIVERED::equals).count();
-    }
-
-    private Optional<URI> allowedEndpoint(final PushSubscription subscription) {
-        final URI endpoint;
-        try {
-            endpoint = URI.create(subscription.getEndpoint());
-        } catch (IllegalArgumentException | NullPointerException e) {
-            log.warn("A push subscription with an endpoint that is no URI was skipped");
-            return Optional.empty();
-        }
-        final String host = endpoint.getHost() == null ? "" : endpoint.getHost().toLowerCase(Locale.ROOT);
-        final boolean allowed = "https".equalsIgnoreCase(endpoint.getScheme())
-            && allowedHosts.stream().anyMatch(allowedHost -> host.equals(allowedHost) || host.endsWith("." + allowedHost));
-        if (!allowed) {
-            log.warn("A push subscription on [{}] was skipped: not a push service of household.push.allowed-hosts", host);
-            return Optional.empty();
-        }
-        return Optional.of(endpoint);
     }
 
     private Mono<Void> removeGone(final PushSubscription subscription) {

@@ -11,6 +11,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.test.StepVerifier;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -60,6 +61,42 @@ class PendingRequestsClientTest {
         assertThat(request.getMethod()).isEqualTo("PUT");
         assertThat(request.getUrl().encodedPath()).isEqualTo("/home/household/requests/sent");
         assertThat(request.getBody().utf8()).isEqualTo("[7,8]");
+    }
+
+    //HAS-416: the three reads, the times as the house writes them
+    @Test
+    void should_read_the_requests_to_announce_to_remind_and_still_open() throws InterruptedException {
+        server.enqueue(json("[{\"id\":7,\"member\":\"Liwia\",\"text\":\"chleb\",\"doneBy\":\"Liwia\"}]"));
+        server.enqueue(json("[]"));
+        server.enqueue(json("[]"));
+
+        sut.doneToAnnounce().as(StepVerifier::create)
+            .assertNext(requests -> assertThat(requests).extracting(MemberRequest::getDoneBy).containsExactly("Liwia"))
+            .verifyComplete();
+        sut.toRemind(LocalDateTime.of(2026, 11, 10, 0, 0)).as(StepVerifier::create).expectNext(List.of()).verifyComplete();
+        sut.stale(LocalDateTime.of(2026, 11, 7, 20, 0, 30)).as(StepVerifier::create).expectNext(List.of()).verifyComplete();
+
+        assertThat(server.takeRequest().getUrl().encodedPath()).isEqualTo("/home/household/requests/done-to-announce");
+        final RecordedRequest remind = server.takeRequest();
+        assertThat(remind.getUrl().encodedPath()).isEqualTo("/home/household/requests/to-remind");
+        assertThat(remind.getUrl().queryParameter("remindedBefore")).isEqualTo("2026-11-10T00:00");
+        final RecordedRequest stale = server.takeRequest();
+        assertThat(stale.getUrl().encodedPath()).isEqualTo("/home/household/requests/stale");
+        assertThat(stale.getUrl().queryParameter("sentBefore")).isEqualTo("2026-11-07T20:00:30");
+    }
+
+    @Test
+    void should_mark_what_was_told_and_answer_the_number() throws InterruptedException {
+        server.enqueue(json("1"));
+        server.enqueue(new MockResponse.Builder().code(400).build());
+
+        sut.mark("done-announced", List.of(7L)).as(StepVerifier::create).expectNext(1L).verifyComplete();
+        sut.mark("reminded", List.of(8L)).as(StepVerifier::create).expectErrorMessage("database-service answered 400").verify();
+
+        final RecordedRequest request = server.takeRequest();
+        assertThat(request.getMethod()).isEqualTo("PUT");
+        assertThat(request.getUrl().encodedPath()).isEqualTo("/home/household/requests/done-announced");
+        assertThat(request.getBody().utf8()).isEqualTo("[7]");
     }
 
     //an error, or no body, is a failed call - never an empty list
