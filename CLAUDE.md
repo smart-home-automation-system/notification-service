@@ -38,12 +38,12 @@ review.
   household test message to the household channel (Discord only; with `sms=true` also an SMS to the
   administrators, HAS-275; on the alert call too since HAS-335). It is deliberately **not**
   routed by `api-gateway-service`.
-- Uses libraries: `smart-home-sdk` 1.17.0 (the household models, since HAS-274; `member` since HAS-347; 1.15.0 since HAS-335; `MemberRequest` of 1.17.0 since HAS-410) and
+- Uses libraries: `smart-home-sdk` 1.19.0 (the household models, since HAS-274; `member` since HAS-347; 1.15.0 since HAS-335; `MemberRequest` of 1.17.0 since HAS-410; its marks of 1.19.0 since HAS-416) and
   `cholewa-commons` (1.13.0 since HAS-335; 1.12.0 since HAS-276; 1.11.0 since HAS-274). The `WebClient`s of the push
   transport are built from the injected builder, so the Logbook filter of the library logs them
   with the `traceId` - there is no own `LogbookClientHandler`, and none may be added (every call
-  would be logged twice); one `@Scheduled` task since HAS-410 (the requests SMS, bounded with
-  `ScheduledPass` of the library). Of what the library
+  would be logged twice); three `@Scheduled` tasks since HAS-416 (the requests SMS since HAS-410, the announcements and the evening reminder,
+  each bounded with `ScheduledPass` of the library). Of what the library
   auto-configures, the error handling, `DownstreamErrors` and the name of the RabbitMQ connection
   are used (see Specifics); its `NotificationPublisher` is opt-in and stays off — this service is the
   consumer of the notifications. There is no database. The English Bean Validation messages
@@ -275,6 +275,40 @@ review.
   - **`POST /requests/send`** runs the same pass by hand (not routed, next to `/skippy`): it texts every
     member with a pending request - the check after a deploy, not a smoke test.
   - `SmsApiClient` is public since HAS-410 (the pass lives in another package); nothing else of it changed.
+- **The reminders and the announcements of the requests** (HAS-416, epic HAS-407, `database-service` >= 0.24.0,
+  owner 2026-11-10) - what is easy to break:
+  - **Two passes in `RequestsReminders`, each one at a time**: `announceDone` every
+    `household.requests.announce-every` (the requests ticked off, one message per author) and `evening` at
+    `household.requests.remind-at` in the zone of the house (the reminders of the open texted requests not
+    reminded since 00:00 of the house, then the requests open `stale-after` after their SMS to their authors).
+    Scheduled in `RequestsSmsSchedule` with the morning SMS, each bounded at 2 min - **never below a push (15 s)
+    or an SMS (20 s)**: a bound that cuts a pass between a delivered message and its marking tells it again (the
+    review of HAS-416 caught 9 s); a fixed delay starts the next pass after this one completed, so they never
+    overlap anyway. **The delays carry their units in `application.yaml`**
+    (`60s`, `3d`): `@Scheduled` reads `fixedDelayString` itself, and a bare `60` there is 60 ms whatever
+    `@DurationUnit` binds - `RequestsScheduleTest` asks the scheduler for the interval.
+  - **`RequestsProperties` is bound by `RequestsConfig`**, not by the schedule since HAS-416: the manual
+    triggers read the zone and `stale-after` with the schedule off; `requestsClock` is the clock of the house.
+  - **A message for one member is `MemberMessenger`**: `PersonalPush` (package `household.push`, only with the
+    push on) to every browser that member subscribed, **at home or not** - the household transport asks
+    presence-service, this does not; an SMS only when no browser took it (none, or all failed) and the member
+    has a phone (owner: Web Push, the SMS in reserve). `UNREACHABLE` (no browser, no phone) is what no later
+    attempt changes - the announcements to such an author are marked with a WARN, or they come back every
+    minute; `FAILED` (a push failed without a phone, an SMS refused, the SMS switched off) is not marked and goes
+    again - an SMSAPI that keeps refusing is an ERROR a minute until it is fixed.
+  - **Only what a delivered message carried is marked**, at once after it; a marking that fails is an ERROR with
+    the ids and that message goes again. The reads come from database-service already in the order of their
+    addressees and are grouped whatever the case of a name.
+  - **The words** (`RequestsReminderText`, written out in its test; the owner's call on a real message): the
+    lists of the morning SMS (`RequestsSmsText.fit`, shared - 201 code points, `i jeszcze N`), the person in
+    brackets so no name is declined and no verb takes a gender. Each kind has its own push tag
+    (`requests-done`, `-reminder`, `-stale`), opens My room (`/room`); the reminder stays on the screen.
+  - **A request written for oneself is never told to its author as still open** (it is reminded every evening):
+    it is marked `stale-announced` without a word.
+  - **`/requests/remind` by day reminds everybody for that day**: the evening pass then finds them reminded
+    since 00:00 and reminds nobody - a check after a deploy is best run in the evening, or not at all.
+  - **`AllowedEndpoints`** holds the check of `household.push.allowed-hosts` for both push paths since HAS-416.
+  - `POST /requests/announce` and `/requests/remind` run the passes by hand (not routed) - they tell real people.
 - **Surefire activates the `test` profile for every class**; that document excludes
   `RabbitAutoConfiguration`, so no test needs a broker, and switches the console logs back to
   plain text. `RabbitConnectionNameTest` puts the auto-configuration back for its own contexts
