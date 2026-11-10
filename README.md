@@ -159,6 +159,30 @@ house**, the first scheduled task of the service:
   (`household.sms.enabled`); without it the pass is one WARN.
 - `POST /home/notification/requests/send` runs the same pass by hand (below).
 
+### The reminders and the announcements of the requests
+
+Since 0.10.0 (HAS-416, `database-service` >= 0.24.0) the household is reminded to tick off what it did, and the
+authors are told (owner 2026-11-10):
+
+- **Every minute** the requests ticked off are told to their authors (`GET /home/household/requests/done-to-announce`):
+  one message per author, `Zrobione: chleb (Liwia), mleko (Tobiasz)`. A tick by the author is never announced
+  (`database-service` marks it at once).
+- **At 20:00 of the house** one reminder to each recipient of their open texted requests not reminded today
+  (`/to-remind?remindedBefore=<today 00:00>`): `Czy zrobione? Odhacz w aplikacji: chleb (Borys), mleko` - it stays
+  on the screen until clicked; then one message to each author of the requests open `stale-after` (3 days)
+  after their SMS (`/stale?sentBefore=`): `Wciąż otwarte: chleb (Liwia)` - once; a request written for oneself is
+  marked without a word (its author is reminded every evening).
+- **Web Push to that member's browsers, at home or not**; an SMS only when no browser took it (none subscribed,
+  or every one failed) and the member has a phone - nobody is left without the message. A tap opens My room.
+- **What a message carried is marked at once** (`PUT /home/household/requests/done-announced`, `/reminded`,
+  `/stale-announced`); a message that failed is not, and goes again - an announcement the next minute, a
+  reminder the next evening. An author not in the registry, switched off, or with no browser and no phone is
+  marked as told with a WARN (or would be asked for every minute forever); a reminder of such a recipient is
+  only a WARN. One pass at a time each; the words are never logged.
+- **Configuration**: `household.requests.remind-at` (`0 0 20 * * *`), `announce-every` (`60s`, 10 s to 10 min)
+  and `stale-after` (`3d`, 1 to 30 days), in `household.requests.zone`, scheduled with
+  `household.requests.enabled`. `POST /home/notification/requests/announce` and `/remind` run the passes by hand - `/remind` by day reminds everybody for that day, and the evening pass then reminds nobody.
+
 # API
 
 Base path `/home/notification` (`spring.webflux.base-path`). The endpoint is not routed by
@@ -167,6 +191,8 @@ Base path `/home/notification` (`spring.webflux.base-path`). The endpoint is not
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/home/notification/skippy?message=<text>&level=<error\|warn\|info>` | Send `message` to the Discord `alerts` channel; `level` is optional and defaults to `info`. With `sms=true` (since HAS-335) the path of a marked message: the post, then `<LEVEL>: <message>` by SMS to the administrators of the household. Returns `200 OK`; the `message` query parameter is required (`400 Bad Request` when missing); `409` for `sms=true` while the SMS is switched off; `502 Bad Gateway` when Discord refuses the request (a wrong channel id included). |
+| `POST` | `/home/notification/requests/announce` | The announcements of the requests ticked off by hand (since 0.10.0, HAS-416): runs the pass of the minute once and answers `202 Accepted` with `{"messages": <delivered>, "marked": <requests marked>}`. Not routed. Never fails. |
+| `POST` | `/home/notification/requests/remind` | The evening pass by hand (since 0.10.0, HAS-416): the reminders of the recipients not reminded today and the announcements of the requests still open, as at 20:00; `202 Accepted` with `{"messages", "marked"}`. Not routed. Never fails. |
 | `POST` | `/home/notification/requests/send` | The SMS of the household requests by hand (since 0.9.0, HAS-410) - the check of the minute after a deploy: runs the pass of 08:00 once - every member with a pending request is texted - and answers `202 Accepted` with `{"sms": <accepted>, "marked": <requests marked sent>}`. Not routed by the gateway (a port-forward). Never fails: what went wrong is in the log; with the SMS switched off it texts nothing and answers `0`. |
 | `GET` | `/home/notification/skippy?category=household&event=<event>&subject=<device>&reminder=<n>&member=<name>` | The smoke test of the household channel (since 0.5.0): a household notification of a made-up device, worded as the queue words one and posted to the household channel - **Discord only** by default, never the push. With `sms=true` (since HAS-275) the same words also go by SMS to the **administrators** of the household, at home or not - one SMS to the owner, never to every member. `event` defaults to `appliance finished`, `subject` to `Zmywarka` (3-50 characters), `reminder` to `0` (0-10); `member` (3-50, optional, HAS-347) names who acknowledged it. `200 OK`; `400` for an unknown event or a bound broken; `409` for `sms=true` while the SMS is switched off; `502` when Discord refuses. |
 

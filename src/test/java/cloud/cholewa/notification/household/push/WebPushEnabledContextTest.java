@@ -43,10 +43,14 @@ class WebPushEnabledContextTest {
     @Autowired
     private HouseholdDispatcher dispatcher;
 
+    @Autowired
+    private PersonalPush personalPush;
+
     @Test
     void should_deliver_by_discord_and_by_push() {
         assertThat(transports).extracting(HouseholdTransport::name).containsExactlyInAnyOrder("discord", "push");
         assertThat(dispatcher).isNotNull();
+        assertThat(personalPush).isNotNull();
     }
 
     private static KeyPair pair() {

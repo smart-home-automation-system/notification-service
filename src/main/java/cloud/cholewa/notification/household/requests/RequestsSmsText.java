@@ -31,28 +31,35 @@ final class RequestsSmsText {
     }
 
     static Composed of(final String recipient, final List<MemberRequest> requests) {
-        for (int count = requests.size(); count > 1; count--) {
-            final String text = textOf(recipient, requests, count);
+        final Fitted fitted = fit(HEADER, requests.stream().map(request -> itemOf(recipient, request)).toList());
+        return new Composed(HEADER + fitted.list(), List.copyOf(requests.subList(0, fitted.count())));
+    }
+
+    /** A list after its header, and how many of its items it carries; shared with the reminders (HAS-416). */
+    record Fitted(String list, int count) {
+    }
+
+    //the most items that fit MAX_CODE_POINTS with the header, the rest as "i jeszcze N" - one always
+    static Fitted fit(final String header, final List<String> items) {
+        for (int count = items.size(); count > 1; count--) {
+            final String text = header + listOf(items, count);
             if (text.codePointCount(0, text.length()) <= MAX_CODE_POINTS) {
-                return new Composed(text, List.copyOf(requests.subList(0, count)));
+                return new Fitted(listOf(items, count), count);
             }
         }
-        return new Composed(textOf(recipient, requests, 1), List.copyOf(requests.subList(0, 1)));
+        return new Fitted(listOf(items, 1), 1);
     }
 
-    private static String textOf(final String recipient, final List<MemberRequest> requests, final int count) {
-        final List<String> items = new ArrayList<>();
-        for (MemberRequest request : requests.subList(0, count)) {
-            items.add(itemOf(recipient, request));
-        }
-        final int left = requests.size() - count;
+    private static String listOf(final List<String> items, final int count) {
+        final List<String> shown = new ArrayList<>(items.subList(0, count));
+        final int left = items.size() - count;
         if (left > 0) {
-            items.add("i jeszcze " + left);
+            shown.add("i jeszcze " + left);
         }
-        return HEADER + String.join(", ", items);
+        return String.join(", ", shown);
     }
 
-    private static String itemOf(final String recipient, final MemberRequest request) {
+    static String itemOf(final String recipient, final MemberRequest request) {
         //an author the answer leaves out is no other member: nothing in brackets
         final String author = Objects.toString(request.getAuthor(), "");
         final boolean own = author.isEmpty() || author.toLowerCase(Locale.ROOT).equals(recipient.toLowerCase(Locale.ROOT));

@@ -3,6 +3,7 @@ package cloud.cholewa.notification.household.push;
 import cloud.cholewa.home.model.HouseholdEvent;
 import cloud.cholewa.home.model.HouseholdNotification;
 import cloud.cholewa.notification.household.HouseholdMessage;
+import cloud.cholewa.notification.household.PersonalMessage;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.LinkedHashMap;
@@ -27,6 +28,25 @@ final class PushPayload {
 
     static String tagOf(final HouseholdNotification notification) {
         return "appliance-" + notification.getDeviceId();
+    }
+
+    /**
+     * A message for one member (HAS-416, the household requests): its own tag and page; it sounds again when it
+     * replaces an older one, and stays on the screen until clicked when it asks for something.
+     */
+    static byte[] personal(final PersonalMessage message, final JsonMapper jsonMapper) {
+        final String path = message.path() == null ? START_PAGE : message.path();
+        final Map<String, Object> data = new LinkedHashMap<>();
+        data.put("path", path);
+        data.put("onActionClick", Map.of("default", Map.of("operation", "navigateLastFocusedOrOpen", "url", path)));
+        final Map<String, Object> shown = new LinkedHashMap<>();
+        shown.put("title", message.title());
+        shown.put("body", message.text());
+        shown.put("tag", message.tag());
+        shown.put("renotify", true);
+        shown.put("requireInteraction", message.sticky());
+        shown.put("data", data);
+        return jsonMapper.writeValueAsBytes(Map.of("notification", shown));
     }
 
     static byte[] of(final HouseholdNotification notification, final HouseholdMessage message, final JsonMapper jsonMapper) {

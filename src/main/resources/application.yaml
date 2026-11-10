@@ -102,6 +102,12 @@ household:
   requests:
     enabled: true
     send-at: "0 0 8 * * *"
+    # HAS-416: the evening reminder of the open texted requests and the announcements of those still open
+    # stale-after after their SMS - POST /home/notification/requests/remind by hand; the requests
+    # ticked off told to their authors every announce-every - POST /requests/announce by hand; the units written
+    remind-at: "0 0 20 * * *"
+    announce-every: 60s
+    stale-after: 3d
     zone: Europe/Warsaw
 
 # the services this one calls inside the cluster, over k8s DNS. A bare number of a timeout is seconds

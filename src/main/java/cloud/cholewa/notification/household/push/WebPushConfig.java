@@ -88,6 +88,17 @@ class WebPushConfig {
             properties.allowedHosts(), jsonMapper);
     }
 
+    //HAS-416: a message for one member, to that member's browsers whether at home or not
+    @Bean
+    PersonalPush personalPush(
+        final PushSubscriptionsClient pushSubscriptionsClient,
+        final WebPushSender webPushSender,
+        final WebPushProperties properties,
+        final JsonMapper jsonMapper
+    ) {
+        return new PersonalPush(pushSubscriptionsClient, webPushSender, properties.allowedHosts(), jsonMapper);
+    }
+
     static ECPrivateKey checkedPrivateKey(final WebPushProperties properties) {
         if (isBlank(properties.privateKey()) || isBlank(properties.publicKey())) {
             throw new IllegalStateException(

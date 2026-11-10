@@ -23,6 +23,9 @@ class RequestsControllerTest {
     @MockitoBean
     private RequestsSmsPass pass;
 
+    @MockitoBean
+    private RequestsReminders reminders;
+
     @Test
     void should_run_the_pass_once_and_answer_202_with_what_it_did() {
         when(pass.run()).thenReturn(Mono.just(new RequestsSmsPass.Outcome(2, 3)));
@@ -34,5 +37,22 @@ class RequestsControllerTest {
             .jsonPath("$.marked").isEqualTo(3);
 
         verify(pass).run();
+    }
+
+    //HAS-416: the announcements and the evening by hand, 202 with what each did
+    @Test
+    void should_run_the_reminders_once_and_answer_202_with_what_they_did() {
+        when(reminders.announceDone()).thenReturn(Mono.just(new RequestsReminders.Outcome(1, 2)));
+        when(reminders.evening()).thenReturn(Mono.just(new RequestsReminders.Outcome(3, 4)));
+
+        webTestClient.post().uri("/requests/announce").exchange()
+            .expectStatus().isAccepted()
+            .expectBody().jsonPath("$.messages").isEqualTo(1).jsonPath("$.marked").isEqualTo(2);
+        webTestClient.post().uri("/requests/remind").exchange()
+            .expectStatus().isAccepted()
+            .expectBody().jsonPath("$.messages").isEqualTo(3).jsonPath("$.marked").isEqualTo(4);
+
+        verify(reminders).announceDone();
+        verify(reminders).evening();
     }
 }

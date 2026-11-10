@@ -17,9 +17,23 @@ import reactor.core.publisher.Mono;
 class RequestsController {
 
     private final RequestsSmsPass pass;
+    private final RequestsReminders reminders;
 
     @PostMapping("requests/send")
     Mono<ResponseEntity<RequestsSmsPass.Outcome>> send() {
         return pass.run().map(outcome -> ResponseEntity.status(HttpStatus.ACCEPTED).body(outcome));
+    }
+
+    //HAS-416: the announcements of the requests ticked off, as every minute - it tells the authors waiting
+    @PostMapping("requests/announce")
+    Mono<ResponseEntity<RequestsReminders.Outcome>> announce() {
+        return reminders.announceDone().map(outcome -> ResponseEntity.status(HttpStatus.ACCEPTED).body(outcome));
+    }
+
+    //HAS-416: the evening pass, as at 20:00 - it reminds every recipient not reminded today and tells the authors
+    //of the requests still open
+    @PostMapping("requests/remind")
+    Mono<ResponseEntity<RequestsReminders.Outcome>> remind() {
+        return reminders.evening().map(outcome -> ResponseEntity.status(HttpStatus.ACCEPTED).body(outcome));
     }
 }
