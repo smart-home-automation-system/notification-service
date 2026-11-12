@@ -70,6 +70,20 @@ class HouseholdDispatcherTest {
                 "Household notification [appliance finished] of [Zmywarka] not delivered by [push]: IllegalStateException - down");
     }
 
+    //HAS-430: a transport that does not carry the event is not handed it, logged as skipped, never as delivered
+    @Test
+    void should_skip_a_transport_that_does_not_carry_the_event() {
+        final HouseholdDispatcher sut = new HouseholdDispatcher(List.of(working("discord"), notCarrying("sms")));
+
+        sut.dispatch(NOTIFICATION).as(StepVerifier::create).verifyComplete();
+
+        assertThat(delivered).containsExactly("discord: Zmywarka skończyła pracę - czas ją opróżnić.");
+        assertThat(logs.list)
+            .extracting(ILoggingEvent::getFormattedMessage)
+            .contains("Household notification [appliance finished] of [Zmywarka] not carried by [sms]")
+            .doesNotContain("Household notification [appliance finished] of [Zmywarka] delivered by [sms]");
+    }
+
     //Discord retrying for a minute must not hold back the SMS: all at once, completed when all are
     @Test
     void should_not_let_a_slow_transport_hold_back_the_others() {
@@ -105,6 +119,25 @@ class HouseholdDispatcherTest {
             @Override
             public String name() {
                 return name;
+            }
+
+            @Override
+            public Mono<Void> deliver(final HouseholdNotification notification, final HouseholdMessage message) {
+                return Mono.fromRunnable(() -> delivered.add(name + ": " + message.text()));
+            }
+        };
+    }
+
+    private HouseholdTransport notCarrying(final String name) {
+        return new HouseholdTransport() {
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public boolean carries(final HouseholdNotification notification) {
+                return false;
             }
 
             @Override

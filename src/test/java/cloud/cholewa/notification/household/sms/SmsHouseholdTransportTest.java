@@ -50,16 +50,16 @@ class SmsHouseholdTransportTest {
         verify(client).send(eq("Jan"), eq("+48500000002"), any());
     }
 
-    //HAS-430: the smog is never texted - not even asked who is at home; the appliances still are
+    //HAS-430: the smog is never texted - the dispatcher does not hand it over; the appliances still are
     @Test
-    void should_never_text_the_smog() {
+    void should_never_carry_the_smog() {
         final HouseholdNotification smog = HouseholdNotification.builder()
             .event(HouseholdEvent.SMOG_WARNING).subject("Air quality sensor").deviceId(145L)
             .occurredAt(LocalDateTime.of(2026, 11, 12, 18, 20)).reminder(0).pm10(112).pm25(78).build();
 
-        sut.deliver(smog, HouseholdMessages.of(smog)).as(StepVerifier::create).verifyComplete();
-        sut.deliver(smog.event(HouseholdEvent.SMOG_OVER), HouseholdMessages.of(smog)).as(StepVerifier::create).verifyComplete();
-
+        assertThat(sut.carries(smog)).isFalse();
+        assertThat(sut.carries(smog.event(HouseholdEvent.SMOG_OVER))).isFalse();
+        assertThat(sut.carries(FINISHED)).isTrue();
         verifyNoInteractions(recipients, client);
     }
 

@@ -38,13 +38,14 @@ class SmsHouseholdTransport implements HouseholdTransport {
         return "sms";
     }
 
+    //the dispatcher hands it no smog, and says so in the log
+    @Override
+    public boolean carries(final HouseholdNotification notification) {
+        return !HouseholdMessages.isSmog(notification);
+    }
+
     @Override
     public Mono<Void> deliver(final HouseholdNotification notification, final HouseholdMessage message) {
-        if (HouseholdMessages.isSmog(notification)) {
-            log.info("No SMS for [{}] of [{}]: the smog is told on Discord and by Web Push only",
-                notification.getEvent(), notification.getSubject());
-            return Mono.empty();
-        }
         return recipients.recipients()
             .filter(found -> !found.isEmpty())
             .switchIfEmpty(Mono.fromRunnable(() -> log.info(

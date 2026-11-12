@@ -29,6 +29,7 @@ public class HouseholdDispatcher {
         //deferred: the words are composed here, and a fault in them has to be a signal
         return Mono.fromCallable(() -> HouseholdMessages.of(notification))
             .flatMapMany(message -> Flux.fromIterable(transports)
+                .filter(transport -> carriedBy(transport, notification))
                 .flatMap(transport -> Mono.defer(() -> transport.deliver(notification, message))
                     .doOnSuccess(done -> log.info(
                         "Household notification [{}] of [{}] delivered by [{}]",
@@ -45,5 +46,14 @@ public class HouseholdDispatcher {
                         return Mono.empty();
                     })))
             .then();
+    }
+
+    private static boolean carriedBy(final HouseholdTransport transport, final HouseholdNotification notification) {
+        final boolean carried = transport.carries(notification);
+        if (!carried) {
+            log.info("Household notification [{}] of [{}] not carried by [{}]",
+                notification.getEvent(), notification.getSubject(), transport.name());
+        }
+        return carried;
     }
 }
