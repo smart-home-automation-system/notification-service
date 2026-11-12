@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 //The household requests of database-service 0.22.0 over a real HTTP exchange (HAS-410)
 class PendingRequestsClientTest {
@@ -42,7 +43,7 @@ class PendingRequestsClientTest {
 
         sut.pending().as(StepVerifier::create)
             .assertNext(requests -> assertThat(requests).extracting(MemberRequest::getId, MemberRequest::getMember,
-                MemberRequest::getText).containsExactly(org.assertj.core.groups.Tuple.tuple(7L, "Liwia", "papier toaletowy")))
+                MemberRequest::getText).containsExactly(tuple(7L, "Liwia", "papier toaletowy")))
             .verifyComplete();
 
         final RecordedRequest request = server.takeRequest();

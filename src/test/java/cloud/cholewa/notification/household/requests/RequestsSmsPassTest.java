@@ -12,6 +12,7 @@ import reactor.core.publisher.Sinks;
 import reactor.test.StepVerifier;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -22,6 +23,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThat;
 
 //The pass of the SMS of the household requests (HAS-410): one SMS per recipient, only the accepted ones marked,
 //a recipient without a phone left pending, a failure of one never stopping the next
@@ -138,14 +140,14 @@ class RequestsSmsPassTest {
         when(pending.pending()).thenReturn(slow.asMono());
         when(sms.send(anyString(), anyString(), anyString())).thenReturn(Mono.just(true));
 
-        final java.util.concurrent.atomic.AtomicReference<RequestsSmsPass.Outcome> first =
-            new java.util.concurrent.atomic.AtomicReference<>();
+        final AtomicReference<RequestsSmsPass.Outcome> first =
+            new AtomicReference<>();
         sut.run().subscribe(first::set);
 
         sut.run().as(StepVerifier::create).expectNext(RequestsSmsPass.Outcome.NOTHING).verifyComplete();
 
         slow.tryEmitValue(List.of(request(1, "Borys", "chleb", "Liwia")));
-        org.assertj.core.api.Assertions.assertThat(first.get()).isEqualTo(new RequestsSmsPass.Outcome(1, 1));
+        assertThat(first.get()).isEqualTo(new RequestsSmsPass.Outcome(1, 1));
         verify(sms, times(1)).send(anyString(), anyString(), anyString());
         //and once it is over, the next pass runs again
         when(pending.pending()).thenReturn(Mono.just(List.of()));

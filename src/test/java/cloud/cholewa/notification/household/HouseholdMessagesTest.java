@@ -96,9 +96,9 @@ class HouseholdMessagesTest {
             .isEqualTo("Coffee machine - potwierdzone, dziękujemy.");
     }
 
-    //every event of the SDK has words, a title and a footer
+    //every event of an appliance has words, a title and a footer - the smog has its own tests above (HAS-430)
     @ParameterizedTest
-    @EnumSource(HouseholdEvent.class)
+    @EnumSource(value = HouseholdEvent.class, names = {"SMOG_WARNING", "SMOG_OVER"}, mode = EnumSource.Mode.EXCLUDE)
     void should_word_every_event(final HouseholdEvent event) {
         final HouseholdMessage message = HouseholdMessages.of(notification("Dishwasher", event, 1));
 
@@ -109,7 +109,7 @@ class HouseholdMessagesTest {
 
     //and the same for a device without a Polish name
     @ParameterizedTest
-    @EnumSource(HouseholdEvent.class)
+    @EnumSource(value = HouseholdEvent.class, names = {"SMOG_WARNING", "SMOG_OVER"}, mode = EnumSource.Mode.EXCLUDE)
     void should_word_every_event_of_another_device(final HouseholdEvent event) {
         final HouseholdMessage message = HouseholdMessages.of(notification("Coffee machine", event, 1));
 
@@ -123,6 +123,58 @@ class HouseholdMessagesTest {
         assertThat(Set.of(
             HouseholdMessages.FINISHED_COLOR, HouseholdMessages.REMINDER_COLOR, HouseholdMessages.ACKNOWLEDGED_COLOR
         )).hasSize(3);
+    }
+
+    //HAS-430: the smog outside, worded with its particles - bad in amber
+    @Test
+    void should_warn_about_smog_with_its_particles() {
+        final HouseholdMessage message = HouseholdMessages.of(smog(HouseholdEvent.SMOG_WARNING, 112, 78));
+
+        assertThat(message.title()).isEqualTo("Air quality sensor");
+        assertThat(message.text()).isEqualTo("Smog na zewnątrz: PM10 112 µg/m³, PM2.5 78 µg/m³ - poziom zły. Zamknij okna i nie wietrz.");
+        assertThat(message.footer()).isEqualTo("24.10.2026 19:05");
+        assertThat(message.color()).isEqualTo(HouseholdMessages.SMOG_BAD_COLOR);
+    }
+
+    //very bad by the GIOS index: above 150 of PM10 or above 110 of PM2.5 - in red
+    @ParameterizedTest
+    @CsvSource({"151, 80", "120, 111"})
+    void should_call_the_smog_very_bad_above_the_index(final int pm10, final int pm25) {
+        final HouseholdMessage message = HouseholdMessages.of(smog(HouseholdEvent.SMOG_WARNING, pm10, pm25));
+
+        assertThat(message.text()).contains("poziom bardzo zły");
+        assertThat(message.color()).isEqualTo(HouseholdMessages.SMOG_VERY_BAD_COLOR);
+    }
+
+    //a message without the numbers is still worded
+    @Test
+    void should_word_the_smog_without_the_numbers() {
+        assertThat(HouseholdMessages.of(smog(HouseholdEvent.SMOG_WARNING, null, null)).text())
+            .isEqualTo("Smog na zewnątrz - poziom zły. Zamknij okna i nie wietrz.");
+        assertThat(HouseholdMessages.of(smog(HouseholdEvent.SMOG_WARNING, null, 60)).text())
+            .isEqualTo("Smog na zewnątrz: PM2.5 60 µg/m³ - poziom zły. Zamknij okna i nie wietrz.");
+        assertThat(HouseholdMessages.of(smog(HouseholdEvent.SMOG_OVER, null, null)).text())
+            .isEqualTo("Powietrze na zewnątrz znów w normie.");
+    }
+
+    @Test
+    void should_say_when_the_air_is_fine_again() {
+        final HouseholdMessage message = HouseholdMessages.of(smog(HouseholdEvent.SMOG_OVER, 35, 20));
+
+        assertThat(message.text()).isEqualTo("Powietrze na zewnątrz znów w normie (PM10 35 µg/m³).");
+        assertThat(message.color()).isEqualTo(HouseholdMessages.ACKNOWLEDGED_COLOR);
+    }
+
+    //the smog is never texted - the rule the transports ask
+    @Test
+    void should_tell_the_smog_apart_from_the_appliances() {
+        assertThat(HouseholdMessages.isSmog(smog(HouseholdEvent.SMOG_WARNING, 1, 1))).isTrue();
+        assertThat(HouseholdMessages.isSmog(smog(HouseholdEvent.SMOG_OVER, 1, 1))).isTrue();
+        assertThat(HouseholdMessages.isSmog(notification("Dryer", HouseholdEvent.APPLIANCE_FINISHED, 0))).isFalse();
+    }
+
+    private static HouseholdNotification smog(final HouseholdEvent event, final Integer pm10, final Integer pm25) {
+        return notification("Air quality sensor", event, 0).pm10(pm10).pm25(pm25);
     }
 
     private static HouseholdNotification acknowledged(final String subject, final String member) {

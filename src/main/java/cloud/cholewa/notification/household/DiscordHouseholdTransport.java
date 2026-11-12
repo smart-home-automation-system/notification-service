@@ -15,7 +15,8 @@ import java.util.stream.Collectors;
 //the household channel on Discord - always, whoever is at home (the owner's decision of 2026-10-11).
 //With the SMS switched on (HAS-275) its footer names the members the SMS of the message goes to - the
 //same cached read as the SMS transport's, asked at the same moment; a read that fails or takes long
-//leaves the footer as it was: the message never waits for it, nor fails because of it
+//leaves the footer as it was: the message never waits for it, nor fails because of it. The smog (HAS-430) is never
+//texted, so its footer names nobody
 @Component
 @RequiredArgsConstructor
 public class DiscordHouseholdTransport implements HouseholdTransport {
@@ -32,7 +33,7 @@ public class DiscordHouseholdTransport implements HouseholdTransport {
 
     @Override
     public Mono<Void> deliver(final HouseholdNotification notification, final HouseholdMessage message) {
-        return withRecipients(message)
+        return (HouseholdMessages.isSmog(notification) ? Mono.just(message) : withRecipients(message))
             .flatMap(discordBotService::sendHouseholdMessage)
             .retryWhen(DiscordDeliveryRetry.spec());
     }

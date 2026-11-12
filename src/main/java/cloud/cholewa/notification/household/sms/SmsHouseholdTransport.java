@@ -2,6 +2,7 @@ package cloud.cholewa.notification.household.sms;
 
 import cloud.cholewa.home.model.HouseholdNotification;
 import cloud.cholewa.notification.household.HouseholdMessage;
+import cloud.cholewa.notification.household.HouseholdMessages;
 import cloud.cholewa.notification.household.HouseholdTransport;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Flux;
@@ -17,6 +18,9 @@ import java.util.List;
  * <p>
  * The SMS go one after the other, not at once: SMSAPI counts the requests of an account, and a household
  * has a handful of members.
+ * <p>
+ * The smog (HAS-430) is never texted - an event-level rule, not a setting (owner, 2026-11-12): Discord and Web Push
+ * tell the household, an SMS costs and the smog is no emergency.
  */
 @Slf4j
 class SmsHouseholdTransport implements HouseholdTransport {
@@ -36,6 +40,11 @@ class SmsHouseholdTransport implements HouseholdTransport {
 
     @Override
     public Mono<Void> deliver(final HouseholdNotification notification, final HouseholdMessage message) {
+        if (HouseholdMessages.isSmog(notification)) {
+            log.info("No SMS for [{}] of [{}]: the smog is told on Discord and by Web Push only",
+                notification.getEvent(), notification.getSubject());
+            return Mono.empty();
+        }
         return recipients.recipients()
             .filter(found -> !found.isEmpty())
             .switchIfEmpty(Mono.fromRunnable(() -> log.info(

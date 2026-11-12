@@ -19,6 +19,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SmsHouseholdTransportTest {
 
@@ -47,6 +48,19 @@ class SmsHouseholdTransportTest {
 
         verify(client).send("Ola", "+48500000001", "Pralka skończyła pracę - czas ją opróżnić.");
         verify(client).send(eq("Jan"), eq("+48500000002"), any());
+    }
+
+    //HAS-430: the smog is never texted - not even asked who is at home; the appliances still are
+    @Test
+    void should_never_text_the_smog() {
+        final HouseholdNotification smog = HouseholdNotification.builder()
+            .event(HouseholdEvent.SMOG_WARNING).subject("Air quality sensor").deviceId(145L)
+            .occurredAt(LocalDateTime.of(2026, 11, 12, 18, 20)).reminder(0).pm10(112).pm25(78).build();
+
+        sut.deliver(smog, HouseholdMessages.of(smog)).as(StepVerifier::create).verifyComplete();
+        sut.deliver(smog.event(HouseholdEvent.SMOG_OVER), HouseholdMessages.of(smog)).as(StepVerifier::create).verifyComplete();
+
+        verifyNoInteractions(recipients, client);
     }
 
     // Discord has the message
@@ -90,7 +104,7 @@ class SmsHouseholdTransportTest {
 
     @Test
     void should_refuse_to_start_without_the_token_or_the_sender() {
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> SmsConfig.checked(" ", "household.sms.token"))
+        assertThatThrownBy(() -> SmsConfig.checked(" ", "household.sms.token"))
             .isInstanceOf(IllegalStateException.class)
             .hasMessage("household.sms.token is required while household.sms.enabled is on");
         assertThat(SmsConfig.checked(" smart-home ", "household.sms.sender")).isEqualTo("smart-home");
