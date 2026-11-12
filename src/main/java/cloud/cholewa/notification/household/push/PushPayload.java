@@ -8,6 +8,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import cloud.cholewa.notification.household.HouseholdMessages;
 
 /**
  * What the installed application receives (HAS-276), in the shape the service worker of Angular shows
@@ -17,7 +18,7 @@ import java.util.Map;
  * <p>
  * {@code tag} is {@code appliance-<deviceId>}: a reminder replaces the notification of the same appliance
  * on the phone instead of stacking under it, and so does the acknowledgement. The words are those of
- * the Discord message - one composition, {@link cloud.cholewa.notification.household.HouseholdMessages}.
+ * the Discord message - one composition, {@link HouseholdMessages}.
  */
 final class PushPayload {
 
@@ -26,8 +27,9 @@ final class PushPayload {
     private PushPayload() {
     }
 
+    //the smog (HAS-430) has its own tag: the end replaces the warning of the same sensor
     static String tagOf(final HouseholdNotification notification) {
-        return "appliance-" + notification.getDeviceId();
+        return (HouseholdMessages.isSmog(notification) ? "smog-" : "appliance-") + notification.getDeviceId();
     }
 
     /**
@@ -62,12 +64,19 @@ final class PushPayload {
         shown.put("tag", tagOf(notification));
         //a reminder that replaces the notification sounds again - it is meant to; the acknowledgement replaces
         //it silently: nobody has to act on it, and it may come late in the evening
-        shown.put("renotify", notification.getEvent() != HouseholdEvent.APPLIANCE_ACKNOWLEDGED);
+        shown.put("renotify", !isQuiet(notification));
         // and it stays on the screen until somebody clicks or closes it (owner, 2026-10-26: a banner of Chrome
         // went after a few seconds) - the acknowledgement does not wait; iOS ignores the option
-        shown.put("requireInteraction", notification.getEvent() != HouseholdEvent.APPLIANCE_ACKNOWLEDGED);
+        shown.put("requireInteraction", !isQuiet(notification));
         shown.put("data", data);
 
         return jsonMapper.writeValueAsBytes(Map.of("notification", shown));
+    }
+
+    //what nobody has to act on: the acknowledgement, and the end of the smog (HAS-430) - good news, it replaces the
+    //warning silently and goes by itself
+    private static boolean isQuiet(final HouseholdNotification notification) {
+        return notification.getEvent() == HouseholdEvent.APPLIANCE_ACKNOWLEDGED
+            || notification.getEvent() == HouseholdEvent.SMOG_OVER;
     }
 }

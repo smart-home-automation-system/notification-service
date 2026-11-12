@@ -18,6 +18,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.net.URI;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -27,6 +28,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
 
 class WebPushHouseholdTransportTest {
 
@@ -70,7 +72,7 @@ class WebPushHouseholdTransportTest {
             .verifyComplete();
 
         final ArgumentCaptor<URI> endpoints = ArgumentCaptor.forClass(URI.class);
-        verify(sender, org.mockito.Mockito.times(2)).send(endpoints.capture(), any(), any());
+        verify(sender, times(2)).send(endpoints.capture(), any(), any());
         assertThat(endpoints.getAllValues()).extracting(URI::toString).containsExactlyInAnyOrder(APPLE, GOOGLE);
     }
 
@@ -248,10 +250,28 @@ class WebPushHouseholdTransportTest {
         assertThat(shown(reminder).get("requireInteraction").asBoolean()).isTrue();
     }
 
+    //HAS-430: the smog has a tag of its own - its end replaces the warning of the same sensor, silently
+    @Test
+    void should_replace_the_smog_warning_silently_with_its_end() {
+        final HouseholdNotification warning = HouseholdNotification.builder()
+            .event(HouseholdEvent.SMOG_WARNING).subject("Air quality sensor").deviceId(145L)
+            .occurredAt(LocalDateTime.of(2026, 11, 12, 18, 20)).reminder(0).pm10(112).pm25(78).build();
+        final HouseholdNotification over = HouseholdNotification.builder()
+            .event(HouseholdEvent.SMOG_OVER).subject("Air quality sensor").deviceId(145L)
+            .occurredAt(LocalDateTime.of(2026, 11, 12, 21, 40)).reminder(0).pm10(35).pm25(20).build();
+
+        assertThat(shown(warning).get("tag").asString()).isEqualTo("smog-145");
+        assertThat(shown(warning).get("renotify").asBoolean()).isTrue();
+        assertThat(shown(warning).get("requireInteraction").asBoolean()).isTrue();
+        assertThat(shown(over).get("tag").asString()).isEqualTo("smog-145");
+        assertThat(shown(over).get("renotify").asBoolean()).isFalse();
+        assertThat(shown(over).get("requireInteraction").asBoolean()).isFalse();
+    }
+
     //database-service reads at most 20 names at once
     @Test
     void should_ask_for_the_subscriptions_of_a_large_household_in_turns() {
-        final List<String> members = java.util.stream.IntStream.rangeClosed(1, 21).mapToObj(i -> "Member" + i).toList();
+        final List<String> members = IntStream.rangeClosed(1, 21).mapToObj(i -> "Member" + i).toList();
         when(presentMembers.present()).thenReturn(Mono.just(members));
         when(subscriptions.ofMembers(members.subList(0, 20))).thenReturn(Mono.just(List.of(subscription(APPLE))));
         when(subscriptions.ofMembers(members.subList(20, 21))).thenReturn(Mono.just(List.of(subscription(GOOGLE))));
@@ -261,7 +281,7 @@ class WebPushHouseholdTransportTest {
             .as(StepVerifier::create)
             .verifyComplete();
 
-        verify(sender, org.mockito.Mockito.times(2)).send(any(), any(), any());
+        verify(sender, times(2)).send(any(), any(), any());
     }
 
     private JsonNode shown(final HouseholdNotification notification) {

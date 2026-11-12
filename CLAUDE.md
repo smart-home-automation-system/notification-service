@@ -38,8 +38,8 @@ review.
   household test message to the household channel (Discord only; with `sms=true` also an SMS to the
   administrators, HAS-275; on the alert call too since HAS-335). It is deliberately **not**
   routed by `api-gateway-service`.
-- Uses libraries: `smart-home-sdk` 1.19.0 (the household models, since HAS-274; `member` since HAS-347; 1.15.0 since HAS-335; `MemberRequest` of 1.17.0 since HAS-410; its marks of 1.19.0 since HAS-416) and
-  `cholewa-commons` (1.13.0 since HAS-335; 1.12.0 since HAS-276; 1.11.0 since HAS-274). The `WebClient`s of the push
+- Uses libraries: `smart-home-sdk` 1.21.0 (the household models, since HAS-274; `member` since HAS-347; 1.15.0 since HAS-335; `MemberRequest` of 1.17.0 since HAS-410; its marks of 1.19.0 since HAS-416; the smog events and `pm10` / `pm25` of 1.21.0 since HAS-430) and
+  `cholewa-commons` (1.14.0 since HAS-430; 1.13.0 since HAS-335; 1.12.0 since HAS-276; 1.11.0 since HAS-274). The `WebClient`s of the push
   transport are built from the injected builder, so the Logbook filter of the library logs them
   with the `traceId` - there is no own `LogbookClientHandler`, and none may be added (every call
   would be logged twice); three `@Scheduled` tasks since HAS-416 (the requests SMS since HAS-410, the announcements and the evening reminder,
@@ -166,6 +166,13 @@ review.
     declension and no gender; a missing or blank one keeps the sentence without anybody, and only the
     acknowledgement names anybody. A new appliance with
     a Polish name of another gender gets its own sentences, not a place in the map.
+  - **The smog** (HAS-430, `smog warning` / `smog over` of smart-home-sdk 1.21.0, published by weather-service): the
+    title is the sensor as the registry names it, the words quote `pm10` / `pm25` (left out when the payload has
+    none); "bardzo zły" in red above `PM10_VERY_BAD` (150) or `PM25_VERY_BAD` (110) - the GIOS index, computed here,
+    the payload carries the values only - otherwise "zły" in amber; the end in the green of the acknowledgement.
+    **Never texted** - an event-level rule (`HouseholdMessages.isSmog`, asked by `SmsHouseholdTransport`), not a
+    setting (owner, 2026-11-12); the Discord footer names nobody. The smoke test `event=smog` is a sample warning,
+    refused with `sms=true`.
   - **Every transport is tried, all at once, and a failed one fails nothing else**
     (`HouseholdDispatcher`, `flatMap`): logged at ERROR with the transport named. At once and not
     in series: Discord retrying for over a minute must not hold back the SMS and the push. The

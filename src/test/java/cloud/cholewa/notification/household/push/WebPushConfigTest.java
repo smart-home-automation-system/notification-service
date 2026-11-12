@@ -10,6 +10,7 @@ import java.security.interfaces.ECPrivateKey;
 import java.security.interfaces.ECPublicKey;
 import java.time.Duration;
 import java.util.List;
+import java.net.URI;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -35,7 +36,7 @@ class WebPushConfigTest {
         final WebPushProperties properties = properties(privateKeyOf(pair), publicKeyOf(pair) + "= ", "mailto:owner@example.com");
 
         final String authorization = new WebPushConfig().vapidSigner(properties)
-            .authorization(java.net.URI.create("https://web.push.apple.com/x"));
+            .authorization(URI.create("https://web.push.apple.com/x"));
 
         assertThat(authorization).endsWith(", k=" + publicKeyOf(pair));
     }

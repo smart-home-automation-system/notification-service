@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -91,6 +92,21 @@ class DiscordHouseholdTransportTest {
 
         verify(discordBotService).sendHouseholdMessage(texted);
         assertThat(texted.footer()).isEqualTo(MESSAGE.footer() + " · SMS: Ola, Jan");
+    }
+
+    //HAS-430: the smog is never texted, so its footer names nobody - the recipients are not even asked
+    @Test
+    void should_name_nobody_in_the_footer_of_the_smog() {
+        final HouseholdNotification smog = HouseholdNotification.builder()
+            .event(HouseholdEvent.SMOG_WARNING).subject("Air quality sensor").deviceId(145L)
+            .occurredAt(LocalDateTime.of(2026, 11, 12, 18, 20)).reminder(0).pm10(112).pm25(78).build();
+        final HouseholdMessage message = HouseholdMessages.of(smog);
+        when(discordBotService.sendHouseholdMessage(message)).thenReturn(Mono.empty());
+
+        sut.deliver(smog, message).as(StepVerifier::create).verifyComplete();
+
+        verify(discordBotService).sendHouseholdMessage(message);
+        verifyNoInteractions(smsRecipients);
     }
 
     // the message never waits for the read nor fails because of it

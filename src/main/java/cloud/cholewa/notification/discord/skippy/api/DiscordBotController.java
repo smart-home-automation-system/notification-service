@@ -31,12 +31,15 @@ import java.time.ZoneId;
  * the household queue words one and posted to the household channel. Apart, so that the
  * parameters of one are neither read nor checked on a call of the other. Discord only, never the
  * push of the household; the SMS only with {@code sms=true}, to the administrators alone (HAS-275) - on
- * both mappings since HAS-335.
+ * both mappings since HAS-335. {@code event=smog} (HAS-430) is a sample {@code smog warning} of the air quality
+ * sensor with its particles - Discord only, never texted: with {@code sms=true} it is refused.
  */
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("skippy")
 public class DiscordBotController {
+
+    static final String SMOG_SAMPLE = "smog";
 
     private final DiscordBotService service;
     private final ObjectProvider<SmsSmoke> smsSmoke;
@@ -71,11 +74,15 @@ public class DiscordBotController {
     @GetMapping(params = "category=household")
     Mono<ResponseEntity<Void>> sendHouseholdMessage(
         @RequestParam(defaultValue = "appliance finished") final String event,
-        @RequestParam(defaultValue = "Zmywarka") @Size(min = 3, max = 50) final String subject,
+        @RequestParam(required = false) @Size(min = 3, max = 50) final String subject,
         @RequestParam(defaultValue = "0") @Min(0) @Max(10) final int reminder,
         @RequestParam(required = false) @Size(min = 3, max = 50) final String member,
         @RequestParam(defaultValue = "false") final boolean sms
     ) {
+        final boolean smog = SMOG_SAMPLE.equals(event);
+        if (smog && sms) {
+            return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "the smog is never texted"));
+        }
         //with sms=true (HAS-275) also one SMS to the administrators of the household - asked for by name,
         //never by default, and refused while the SMS is switched off
         final Mono<SmsSmoke> texting = Mono.just(sms)
@@ -85,10 +92,25 @@ public class DiscordBotController {
                     new ResponseStatusException(HttpStatus.CONFLICT, "the SMS of the household is switched off"))))
             .cache();
         return texting
-            .then(Mono.fromCallable(() -> HouseholdMessages.of(testNotification(event, subject, reminder, member))))
+            .then(Mono.fromCallable(() -> HouseholdMessages.of(smog
+                ? smogSample(subject)
+                : testNotification(event, subject == null ? "Zmywarka" : subject, reminder, member))))
             .flatMap(message -> service.sendHouseholdMessage(message)
                 .then(texting.flatMap(smoke -> smoke.sendToAdministrators(message)).then()))
             .thenReturn(ResponseEntity.ok().build());
+    }
+
+    //a sample smog warning of the air quality sensor - bad, not very bad
+    private static HouseholdNotification smogSample(final String subject) {
+        return HouseholdNotification.builder()
+            .event(HouseholdEvent.SMOG_WARNING)
+            .subject(subject == null ? "Air quality sensor" : subject)
+            .deviceId(1L)
+            .occurredAt(LocalDateTime.now(ZoneId.systemDefault()))
+            .reminder(0)
+            .pm10(112)
+            .pm25(78)
+            .build();
     }
 
     private static HouseholdNotification testNotification(final String event, final String subject, final int reminder,

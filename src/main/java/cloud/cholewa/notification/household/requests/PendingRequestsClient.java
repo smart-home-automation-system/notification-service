@@ -13,6 +13,7 @@ import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.web.reactive.function.client.ClientResponse;
 
 /**
  * The household requests of database-service >= 0.22.0 (HAS-409) over k8s DNS, on the WebClient of the
@@ -87,7 +88,7 @@ public class PendingRequestsClient {
     }
 
     private static Mono<IllegalStateException> failure(
-        final org.springframework.web.reactive.function.client.ClientResponse response, final String what) {
+        final ClientResponse response, final String what) {
         return DownstreamErrors.read(response)
             .map(error -> {
                 log.warn("database-service answered {} to {}: {}", error.status().value(), what, error.errors());

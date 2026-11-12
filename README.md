@@ -79,6 +79,8 @@ Polish names, whatever the case of the registry name (`Washing machine` - `Pralk
 | `appliance finished` | `Pralka skończyła pracę - czas ją opróżnić.` | orange |
 | `appliance reminder` | `Pralka wciąż czeka na opróżnienie (przypomnienie <n>).` | dark orange |
 | `appliance acknowledged` | `Pralka opróżniona - dziękujemy!`; with the `member` who acknowledged it (since HAS-347): `Pralka opróżniona - potwierdza Liwia. Dziękujemy!` | green |
+| `smog warning` (since HAS-430, published by weather-service) | `Smog na zewnątrz: PM10 112 µg/m³, PM2.5 78 µg/m³ - poziom zły. Zamknij okna i nie wietrz.` - "bardzo zły" above 150 of PM10 or 110 of PM2.5 (the GIOS index); without the numbers `Smog na zewnątrz - poziom zły. ...` | amber, red when very bad |
+| `smog over` (since HAS-430) | `Powietrze na zewnątrz znów w normie (PM10 35 µg/m³).` | green |
 
 Any other device keeps its registry name, in sentences without a gendered verb:
 `Koniec pracy: <device> - wymaga opróżnienia.`, `Przypomnienie <n>: <device> nadal czeka na
@@ -86,7 +88,9 @@ opróżnienie.`, `<device> - potwierdzone, dziękujemy.` (with a member: `<devic
 
 A household notification is delivered by every **transport**, all at once
 (`HouseholdDispatcher`): Discord, **Web Push** (since HAS-276) and **SMS** (since HAS-275). A
-transport that fails never fails the others; it is logged at ERROR with its name.
+transport that fails never fails the others; it is logged at ERROR with its name. **The smog is never texted**
+(HAS-430, owner 2026-11-12): `smog warning` and `smog over` go to Discord and by Web Push only, and their Discord footer
+names nobody.
 
 **SMS** (HAS-275) puts the sentence of the Discord message, cut to 160 characters, on the phones
 of the members at home - one SMS per member a message, through SMSAPI (`POST /sms.do`, the
@@ -194,7 +198,7 @@ Base path `/home/notification` (`spring.webflux.base-path`). The endpoint is not
 | `POST` | `/home/notification/requests/announce` | The announcements of the requests ticked off by hand (since 0.10.0, HAS-416): runs the pass of the minute once and answers `202 Accepted` with `{"messages": <delivered>, "marked": <requests marked>}`. Not routed. Never fails. |
 | `POST` | `/home/notification/requests/remind` | The evening pass by hand (since 0.10.0, HAS-416): the reminders of the recipients not reminded today and the announcements of the requests still open, as at 20:00; `202 Accepted` with `{"messages", "marked"}`. Not routed. Never fails. |
 | `POST` | `/home/notification/requests/send` | The SMS of the household requests by hand (since 0.9.0, HAS-410) - the check of the minute after a deploy: runs the pass of 08:00 once - every member with a pending request is texted - and answers `202 Accepted` with `{"sms": <accepted>, "marked": <requests marked sent>}`. Not routed by the gateway (a port-forward). Never fails: what went wrong is in the log; with the SMS switched off it texts nothing and answers `0`. |
-| `GET` | `/home/notification/skippy?category=household&event=<event>&subject=<device>&reminder=<n>&member=<name>` | The smoke test of the household channel (since 0.5.0): a household notification of a made-up device, worded as the queue words one and posted to the household channel - **Discord only** by default, never the push. With `sms=true` (since HAS-275) the same words also go by SMS to the **administrators** of the household, at home or not - one SMS to the owner, never to every member. `event` defaults to `appliance finished`, `subject` to `Zmywarka` (3-50 characters), `reminder` to `0` (0-10); `member` (3-50, optional, HAS-347) names who acknowledged it. `200 OK`; `400` for an unknown event or a bound broken; `409` for `sms=true` while the SMS is switched off; `502` when Discord refuses. |
+| `GET` | `/home/notification/skippy?category=household&event=<event>&subject=<device>&reminder=<n>&member=<name>` | The smoke test of the household channel (since 0.5.0): a household notification of a made-up device, worded as the queue words one and posted to the household channel - **Discord only** by default, never the push. With `sms=true` (since HAS-275) the same words also go by SMS to the **administrators** of the household, at home or not - one SMS to the owner, never to every member. `event` defaults to `appliance finished`, `subject` to `Zmywarka` (3-50 characters), `reminder` to `0` (0-10); `member` (3-50, optional, HAS-347) names who acknowledged it. `event=smog` (since HAS-430) is a sample `smog warning` of the air quality sensor (PM10 112, PM2.5 78) - Discord only, `sms=true` with it is a `400`. `200 OK`; `400` for an unknown event or a bound broken; `409` for `sms=true` while the SMS is switched off; `502` when Discord refuses. |
 
 # Messaging
 

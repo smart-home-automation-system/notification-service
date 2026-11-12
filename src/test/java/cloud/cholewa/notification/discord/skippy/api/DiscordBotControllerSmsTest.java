@@ -101,6 +101,21 @@ class DiscordBotControllerSmsTest {
         assertThat(posted.getValue().text()).isEqualTo("Zmywarka skończyła pracę - czas ją opróżnić.");
     }
 
+    //HAS-430: event=smog is a sample smog warning on Discord - never texted, so with sms=true it is refused
+    @Test
+    void should_post_a_smog_sample_and_never_text_it() {
+        when(discordBotService.sendHouseholdMessage(any())).thenReturn(Mono.empty());
+
+        webTestClient.get().uri("/skippy?category=household&event=smog").exchange().expectStatus().isOk();
+        webTestClient.get().uri("/skippy?category=household&event=smog&sms=true").exchange().expectStatus().isBadRequest();
+
+        final ArgumentCaptor<HouseholdMessage> posted = ArgumentCaptor.forClass(HouseholdMessage.class);
+        verify(discordBotService).sendHouseholdMessage(posted.capture());
+        assertThat(posted.getValue().title()).isEqualTo("Air quality sensor");
+        assertThat(posted.getValue().text()).startsWith("Smog na zewnątrz: PM10 112 µg/m³, PM2.5 78 µg/m³");
+        verifyNoInteractions(smsSmoke);
+    }
+
     // an SMS costs and reaches a phone: never without sms=true
     @Test
     void should_text_nobody_without_sms_true() {
