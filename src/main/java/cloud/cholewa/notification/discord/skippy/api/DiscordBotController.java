@@ -94,7 +94,7 @@ public class DiscordBotController {
         return texting
             .then(Mono.fromCallable(() -> HouseholdMessages.of(smog
                 ? smogSample(subject)
-                : testNotification(event, subject == null ? "Zmywarka" : subject, reminder, member))))
+                : testNotification(event, subject, reminder, member))))
             .flatMap(message -> service.sendHouseholdMessage(message)
                 .then(texting.flatMap(smoke -> smoke.sendToAdministrators(message)).then()))
             .thenReturn(ResponseEntity.ok().build());
@@ -123,7 +123,7 @@ public class DiscordBotController {
         }
         return HouseholdNotification.builder()
             .event(householdEvent)
-            .subject(subject)
+            .subject(subject == null ? "Zmywarka" : subject)
             .deviceId(1L)
             .occurredAt(LocalDateTime.now(ZoneId.systemDefault()))
             .reminder(reminder)
