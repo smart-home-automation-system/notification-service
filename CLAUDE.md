@@ -170,8 +170,9 @@ review.
     title is the sensor as the registry names it, the words quote `pm10` / `pm25` (left out when the payload has
     none); "bardzo zły" in red above `PM10_VERY_BAD` (150) or `PM25_VERY_BAD` (110) - the GIOS index, computed here,
     the payload carries the values only - otherwise "zły" in amber; the end in the green of the acknowledgement.
-    **Never texted** - an event-level rule (`HouseholdMessages.isSmog`, asked by `SmsHouseholdTransport`), not a
-    setting (owner, 2026-11-12); the Discord footer names nobody. The smoke test `event=smog` is a sample warning,
+    **Never texted** - an event-level rule (`HouseholdMessages.isSmog`, answered by `SmsHouseholdTransport.carries`), not a
+    setting (owner, 2026-11-12) - the dispatcher does not hand the smog to the SMS and logs "not carried by [sms]",
+    never "delivered by [sms]" (0.11.1; 0.11.0 logged it as delivered); the Discord footer names nobody. The smoke test `event=smog` is a sample warning,
     refused with `sms=true`.
   - **Every transport is tried, all at once, and a failed one fails nothing else**
     (`HouseholdDispatcher`, `flatMap`): logged at ERROR with the transport named. At once and not

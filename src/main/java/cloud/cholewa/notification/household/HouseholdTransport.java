@@ -14,5 +14,10 @@ public interface HouseholdTransport {
     //how the transport is named in the log - the one line that says which way did not get through
     String name();
 
+    //an event this transport never carries is not handed to it, and the log says it was skipped, not delivered
+    default boolean carries(final HouseholdNotification notification) {
+        return true;
+    }
+
     Mono<Void> deliver(HouseholdNotification notification, HouseholdMessage message);
 }
