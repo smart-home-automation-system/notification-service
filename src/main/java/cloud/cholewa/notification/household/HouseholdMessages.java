@@ -7,6 +7,7 @@ import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
 import java.time.Duration;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Map;
@@ -59,6 +60,8 @@ public final class HouseholdMessages {
     static final int GARAGE_CLOSED_COLOR = 0x2ECC71;
     static final String GARAGE_TITLE = "Brama garażowa";
     private static final Locale POLISH = Locale.forLanguageTag("pl");
+    //the clock the publishers stamp occurredAt and openSince with
+    private static final ZoneId HOUSE = ZoneId.of("Europe/Warsaw");
 
     //the GIOS index: above these (ug/m3) the air is very bad (level 6)
     static final int PM10_VERY_BAD = 150;
@@ -229,15 +232,23 @@ public final class HouseholdMessages {
         };
     }
 
-    //how long it stands open: from openSince to the moment of the message, in minutes and hours
+    //how long it stands open: from openSince to the moment of the message, both in the time of the house - compared as
+    //instants of its zone, so the night the clocks change counts the hour that was or was not
     private static Optional<String> openFor(final HouseholdNotification notification) {
         return Optional.ofNullable(notification.getOpenSince())
-            .map(since -> Duration.between(since, notification.getOccurredAt()))
+            .map(since -> Duration.between(since.atZone(HOUSE), notification.getOccurredAt().atZone(HOUSE)))
             .filter(open -> !open.isNegative())
-            .map(open -> {
-                final long minutes = open.toMinutes();
-                return minutes < 60 ? minutes + " min" : minutes / 60 + " h" + (minutes % 60 == 0 ? "" : " " + minutes % 60 + " min");
-            });
+            .map(open -> minutesAndHours(open.toMinutes()));
+    }
+
+    //"15 min", "2 h", "1 h 15 min"
+    private static String minutesAndHours(final long minutes) {
+        if (minutes < 60) {
+            return minutes + " min";
+        }
+        final long rest = minutes % 60;
+        final String hours = minutes / 60 + " h";
+        return rest == 0 ? hours : hours + " " + rest + " min";
     }
 
     //", a na zewnątrz 7,5 °C" - the reading that made it an alarm, in the decimal comma of the house
@@ -247,10 +258,10 @@ public final class HouseholdMessages {
             .orElse(", a na zewnątrz jest zimno");
     }
 
-    //the payload counts the repeats: 0 is the first message
+    //the payload counts the repeats: 0 is the first message (required - the reader refuses a payload without it)
     private static String repeat(final HouseholdNotification notification) {
-        final Integer reminder = notification.getReminder();
-        return reminder == null || reminder == 0 ? "" : " (przypomnienie " + reminder + ")";
+        final int reminder = notification.getReminder();
+        return reminder == 0 ? "" : " (przypomnienie " + reminder + ")";
     }
 
     //from the screen, from the application by a member (the name after the verb, no case), or from where not known

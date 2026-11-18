@@ -245,6 +245,16 @@ class HouseholdMessagesTest {
             .isEqualTo("Brama garażowa");
     }
 
+    //the night the clocks go back (2026-10-25, 03:00 becomes 02:00) 01:30 to 03:30 of the house is three hours
+    @Test
+    void should_count_the_hour_the_clocks_go_back() {
+        final HouseholdNotification closed = HouseholdNotification.builder()
+            .event(HouseholdEvent.GARAGE_GATE_CLOSED).subject("Kate").deviceId(148L).reminder(0)
+            .openSince(LocalDateTime.of(2026, 10, 25, 1, 30)).occurredAt(LocalDateTime.of(2026, 10, 25, 3, 30)).build();
+
+        assertThat(HouseholdMessages.of(closed).text()).isEqualTo("Zamknięta po 3 h.");
+    }
+
     @Test
     void should_colour_the_alarms_red_the_warning_amber_and_the_end_green() {
         assertThat(HouseholdMessages.of(garage(HouseholdEvent.GARAGE_GATE_OPEN_COLD, 0, 15)).color())
