@@ -141,6 +141,8 @@ discord:
       alerts-channel-id: ${discord_alerts_channel_id}
       # the household channel (HAS-274), in Polish; the same reasons for no default
       household-channel-id: ${discord_household_channel_id}
+      # the intercom channel (HAS-451): the doorbell and the gate, in Polish; the same reasons for no default
+      intercom-channel-id: ${discord_intercom_channel_id}
 
 ---
 
@@ -201,6 +203,7 @@ discord:
     skippy:
       alerts-channel-id: 1
       household-channel-id: 2
+      intercom-channel-id: 3
 
 logbook:
   format:

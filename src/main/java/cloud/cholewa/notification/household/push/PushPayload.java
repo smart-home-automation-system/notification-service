@@ -27,9 +27,16 @@ final class PushPayload {
     private PushPayload() {
     }
 
-    //the smog (HAS-430) has its own tag: the end replaces the warning of the same sensor
+    //the smog (HAS-430) has its own tag: the end replaces the warning of the same sensor; a ring (HAS-451) replaces
+    //the ring before it on the phone and sounds again
     static String tagOf(final HouseholdNotification notification) {
-        return (HouseholdMessages.isSmog(notification) ? "smog-" : "appliance-") + notification.getDeviceId();
+        final String kind = switch (notification.getEvent()) {
+            case SMOG_WARNING, SMOG_OVER -> "smog-";
+            case DOORBELL_RINGING -> "doorbell-";
+            case GATE_OPENED -> "gate-";
+            case APPLIANCE_FINISHED, APPLIANCE_REMINDER, APPLIANCE_ACKNOWLEDGED -> "appliance-";
+        };
+        return kind + notification.getDeviceId();
     }
 
     /**

@@ -1,5 +1,7 @@
 package cloud.cholewa.notification.household.push;
 
+import cloud.cholewa.home.model.HouseholdEvent;
+import cloud.cholewa.notification.household.members.HouseholdRegistryClient;
 import cloud.cholewa.notification.household.members.PresentMembersClient;
 import cloud.cholewa.home.model.HouseholdNotification;
 import cloud.cholewa.home.model.PushSubscription;
@@ -26,6 +28,9 @@ import java.util.List;
  * service answering 404 or 410 dropped the subscription: it is removed from the registry, and a removal
  * that fails is logged and tried again by the next message that finds it. The transport fails only when
  * there was somebody to reach and not one browser took the message.
+ * <p>
+ * The doorbell (HAS-451) goes to every switched-on member of the registry, at home or not - somebody away may let
+ * the caller in; the opening of the gate is never pushed (the dispatcher logs it as not carried).
  */
 @Slf4j
 class WebPushHouseholdTransport implements HouseholdTransport {
@@ -34,6 +39,7 @@ class WebPushHouseholdTransport implements HouseholdTransport {
     static final int MEMBERS_PER_READ = 20;
 
     private final PresentMembersClient presentMembers;
+    private final HouseholdRegistryClient registry;
     private final PushSubscriptionsClient subscriptions;
     private final WebPushSender sender;
     private final AllowedEndpoints allowedEndpoints;
@@ -41,12 +47,14 @@ class WebPushHouseholdTransport implements HouseholdTransport {
 
     WebPushHouseholdTransport(
         final PresentMembersClient presentMembers,
+        final HouseholdRegistryClient registry,
         final PushSubscriptionsClient subscriptions,
         final WebPushSender sender,
         final List<String> allowedHosts,
         final JsonMapper jsonMapper
     ) {
         this.presentMembers = presentMembers;
+        this.registry = registry;
         this.subscriptions = subscriptions;
         this.sender = sender;
         this.allowedEndpoints = new AllowedEndpoints(allowedHosts);
@@ -59,11 +67,16 @@ class WebPushHouseholdTransport implements HouseholdTransport {
     }
 
     @Override
+    public boolean carries(final HouseholdNotification notification) {
+        return notification.getEvent() != HouseholdEvent.GATE_OPENED;
+    }
+
+    @Override
     public Mono<Void> deliver(final HouseholdNotification notification, final HouseholdMessage message) {
-        return presentMembers.present()
+        return recipientsOf(notification)
             .map(WebPushHouseholdTransport::askable)
             .filter(members -> !members.isEmpty())
-            .switchIfEmpty(Mono.fromRunnable(() -> log.info("Nobody of the household is at home: no push for [{}] of [{}]",
+            .switchIfEmpty(Mono.fromRunnable(() -> log.info("Nobody of the household to reach: no push for [{}] of [{}]",
                 notification.getEvent(), notification.getSubject())))
             //database-service takes at most MEMBERS_PER_READ names a read: more at home are asked in turn
             .flatMapMany(members -> Flux.fromIterable(members).buffer(MEMBERS_PER_READ))
@@ -71,6 +84,18 @@ class WebPushHouseholdTransport implements HouseholdTransport {
             .flatMapIterable(found -> found)
             .collectList()
             .flatMap(found -> send(found, notification, message));
+    }
+
+    //the doorbell: everybody switched on in the registry; every other event: who is at home
+    private Mono<List<String>> recipientsOf(final HouseholdNotification notification) {
+        return Mono.just(notification)
+            .filter(ringing -> ringing.getEvent() == HouseholdEvent.DOORBELL_RINGING)
+            .flatMap(ringing -> registry.members())
+            .map(members -> members.stream()
+                .filter(HouseholdRegistryClient.Member::switchedOn)
+                .map(HouseholdRegistryClient.Member::name)
+                .toList())
+            .switchIfEmpty(Mono.defer(presentMembers::present));
     }
 
     private Mono<Void> send(

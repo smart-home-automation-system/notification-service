@@ -67,7 +67,7 @@ class DiscordBotControllerTest {
     //the smoke test of the household channel (HAS-274): worded as the queue words it, Discord only
     @Test
     void should_post_a_household_test_message_to_the_household_channel() {
-        when(discordBotService.sendHouseholdMessage(any())).thenReturn(Mono.empty());
+        when(discordBotService.sendHouseholdMessage(any(), any())).thenReturn(Mono.empty());
 
         webTestClient.get()
             .uri(uriBuilder -> uriBuilder.path("/skippy")
@@ -80,7 +80,7 @@ class DiscordBotControllerTest {
             .expectStatus().isOk();
 
         final ArgumentCaptor<HouseholdMessage> sent = ArgumentCaptor.forClass(HouseholdMessage.class);
-        verify(discordBotService).sendHouseholdMessage(sent.capture());
+        verify(discordBotService).sendHouseholdMessage(any(), sent.capture());
         assertThat(sent.getValue().title()).isEqualTo("Pralka");
         assertThat(sent.getValue().text()).isEqualTo("Pralka wciąż czeka na opróżnienie (przypomnienie 2).");
         verify(discordBotService, never()).sendMessage(any(), any());
@@ -89,7 +89,7 @@ class DiscordBotControllerTest {
     //HAS-347: who acknowledged it, as the payload of appliance-service carries it
     @Test
     void should_name_who_acknowledged_in_a_household_test_message() {
-        when(discordBotService.sendHouseholdMessage(any())).thenReturn(Mono.empty());
+        when(discordBotService.sendHouseholdMessage(any(), any())).thenReturn(Mono.empty());
 
         webTestClient.get()
             .uri("/skippy?category=household&event=appliance acknowledged&subject=Dryer&reminder=1&member=Anna")
@@ -97,14 +97,14 @@ class DiscordBotControllerTest {
             .expectStatus().isOk();
 
         final ArgumentCaptor<HouseholdMessage> sent = ArgumentCaptor.forClass(HouseholdMessage.class);
-        verify(discordBotService).sendHouseholdMessage(sent.capture());
+        verify(discordBotService).sendHouseholdMessage(any(), sent.capture());
         assertThat(sent.getValue().text()).isEqualTo("Suszarka opróżniona - potwierdza Anna. Dziękujemy!");
     }
 
     //without anything but the category: the dishwasher finished, as the task words it
     @Test
     void should_post_the_default_household_test_message() {
-        when(discordBotService.sendHouseholdMessage(any())).thenReturn(Mono.empty());
+        when(discordBotService.sendHouseholdMessage(any(), any())).thenReturn(Mono.empty());
 
         webTestClient.get()
             .uri("/skippy?category=household")
@@ -112,7 +112,7 @@ class DiscordBotControllerTest {
             .expectStatus().isOk();
 
         final ArgumentCaptor<HouseholdMessage> sent = ArgumentCaptor.forClass(HouseholdMessage.class);
-        verify(discordBotService).sendHouseholdMessage(sent.capture());
+        verify(discordBotService).sendHouseholdMessage(any(), sent.capture());
         assertThat(sent.getValue().text()).isEqualTo("Zmywarka skończyła pracę - czas ją opróżnić.");
     }
 
@@ -149,7 +149,7 @@ class DiscordBotControllerTest {
             .expectStatus().isOk();
 
         verify(discordBotService).sendMessage(NotificationLevel.INFO, "test message");
-        verify(discordBotService, never()).sendHouseholdMessage(any());
+        verify(discordBotService, never()).sendHouseholdMessage(any(), any());
     }
 
     //an alert without its text, a household test message out of bounds or of an unknown event

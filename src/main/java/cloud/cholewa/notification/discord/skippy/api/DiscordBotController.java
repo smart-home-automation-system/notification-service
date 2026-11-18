@@ -32,7 +32,9 @@ import java.time.ZoneId;
  * parameters of one are neither read nor checked on a call of the other. Discord only, never the
  * push of the household; the SMS only with {@code sms=true}, to the administrators alone (HAS-275) - on
  * both mappings since HAS-335. {@code event=smog} (HAS-430) is a sample {@code smog warning} of the air quality
- * sensor with its particles - Discord only, never texted: with {@code sms=true} it is refused.
+ * sensor with its particles - Discord only, never texted: with {@code sms=true} it is refused. {@code event=doorbell}
+ * (HAS-451) is a sample {@code doorbell ringing} of the station at the gate, posted to the intercom channel - as is any
+ * event of the intercom ({@code doorbell ringing}, {@code gate opened}); never texted either.
  */
 @RestController
 @RequiredArgsConstructor
@@ -40,6 +42,7 @@ import java.time.ZoneId;
 public class DiscordBotController {
 
     static final String SMOG_SAMPLE = "smog";
+    static final String DOORBELL_SAMPLE = "doorbell";
 
     private final DiscordBotService service;
     private final ObjectProvider<SmsSmoke> smsSmoke;
@@ -79,10 +82,6 @@ public class DiscordBotController {
         @RequestParam(required = false) @Size(min = 3, max = 50) final String member,
         @RequestParam(defaultValue = "false") final boolean sms
     ) {
-        final boolean smog = SMOG_SAMPLE.equals(event);
-        if (smog && sms) {
-            return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "the smog is never texted"));
-        }
         //with sms=true (HAS-275) also one SMS to the administrators of the household - asked for by name,
         //never by default, and refused while the SMS is switched off
         final Mono<SmsSmoke> texting = Mono.just(sms)
@@ -91,13 +90,29 @@ public class DiscordBotController {
                 .switchIfEmpty(Mono.error(() ->
                     new ResponseStatusException(HttpStatus.CONFLICT, "the SMS of the household is switched off"))))
             .cache();
-        return texting
-            .then(Mono.fromCallable(() -> HouseholdMessages.of(smog
-                ? smogSample(subject)
-                : testNotification(event, subject, reminder, member))))
-            .flatMap(message -> service.sendHouseholdMessage(message)
-                .then(texting.flatMap(smoke -> smoke.sendToAdministrators(message)).then()))
+        //deferred: an unknown event is a signal, and the smog and the intercom are never texted
+        return Mono.fromCallable(() -> sampleOf(event, subject, reminder, member))
+            .filter(notification -> !sms || !neverTexted(notification))
+            .switchIfEmpty(Mono.error(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "the " + event + " is never texted")))
+            .flatMap(notification -> texting
+                .then(Mono.fromCallable(() -> HouseholdMessages.of(notification)))
+                .flatMap(message -> service.sendHouseholdMessage(notification, message)
+                    .then(texting.flatMap(smoke -> smoke.sendToAdministrators(message)).then())))
             .thenReturn(ResponseEntity.ok().build());
+    }
+
+    private static boolean neverTexted(final HouseholdNotification notification) {
+        return HouseholdMessages.isSmog(notification) || HouseholdMessages.isIntercom(notification);
+    }
+
+    private static HouseholdNotification sampleOf(final String event, final String subject, final int reminder,
+                                                  final String member) {
+        return switch (event) {
+            case SMOG_SAMPLE -> smogSample(subject);
+            case DOORBELL_SAMPLE -> doorbellSample(subject);
+            default -> testNotification(event, subject, reminder, member);
+        };
     }
 
     //a sample smog warning of the air quality sensor - bad, not very bad
@@ -110,6 +125,17 @@ public class DiscordBotController {
             .reminder(0)
             .pm10(112)
             .pm25(78)
+            .build();
+    }
+
+    //a sample ring of the station at the gate
+    private static HouseholdNotification doorbellSample(final String subject) {
+        return HouseholdNotification.builder()
+            .event(HouseholdEvent.DOORBELL_RINGING)
+            .subject(subject == null ? "Intercom" : subject)
+            .deviceId(1L)
+            .occurredAt(LocalDateTime.now(ZoneId.systemDefault()))
+            .reminder(0)
             .build();
     }
 

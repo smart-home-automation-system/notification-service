@@ -20,6 +20,8 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -54,11 +56,11 @@ class DiscordHouseholdTransportTest {
 
     @Test
     void should_post_the_message_to_the_household_channel() {
-        when(discordBotService.sendHouseholdMessage(MESSAGE)).thenReturn(Mono.empty());
+        when(discordBotService.sendHouseholdMessage(any(), eq(MESSAGE))).thenReturn(Mono.empty());
 
         sut.deliver(NOTIFICATION, MESSAGE).as(StepVerifier::create).verifyComplete();
 
-        verify(discordBotService).sendHouseholdMessage(MESSAGE);
+        verify(discordBotService).sendHouseholdMessage(any(), eq(MESSAGE));
     }
 
     //what another attempt cannot change is not retried - a refusal (4xx) once, then the error
@@ -67,7 +69,7 @@ class DiscordHouseholdTransportTest {
         final ClientException forbidden = mock(ClientException.class);
         when(forbidden.getStatus()).thenReturn(HttpResponseStatus.FORBIDDEN);
         final AtomicInteger attempts = new AtomicInteger();
-        when(discordBotService.sendHouseholdMessage(MESSAGE))
+        when(discordBotService.sendHouseholdMessage(any(), eq(MESSAGE)))
             .thenReturn(Mono.defer(() -> {
                 attempts.incrementAndGet();
                 return Mono.error(forbidden);
@@ -86,11 +88,11 @@ class DiscordHouseholdTransportTest {
         when(sms.recipients()).thenReturn(Mono.just(List.of(
             new SmsRecipients.Recipient("Ola", "+48500000001"), new SmsRecipients.Recipient("Jan", "+48500000002"))));
         final HouseholdMessage texted = MESSAGE.withFooter("SMS: Ola, Jan");
-        when(discordBotService.sendHouseholdMessage(texted)).thenReturn(Mono.empty());
+        when(discordBotService.sendHouseholdMessage(any(), eq(texted))).thenReturn(Mono.empty());
 
         sut.deliver(NOTIFICATION, MESSAGE).as(StepVerifier::create).verifyComplete();
 
-        verify(discordBotService).sendHouseholdMessage(texted);
+        verify(discordBotService).sendHouseholdMessage(any(), eq(texted));
         assertThat(texted.footer()).isEqualTo(MESSAGE.footer() + " · SMS: Ola, Jan");
     }
 
@@ -101,11 +103,26 @@ class DiscordHouseholdTransportTest {
             .event(HouseholdEvent.SMOG_WARNING).subject("Air quality sensor").deviceId(145L)
             .occurredAt(LocalDateTime.of(2026, 11, 12, 18, 20)).reminder(0).pm10(112).pm25(78).build();
         final HouseholdMessage message = HouseholdMessages.of(smog);
-        when(discordBotService.sendHouseholdMessage(message)).thenReturn(Mono.empty());
+        when(discordBotService.sendHouseholdMessage(any(), eq(message))).thenReturn(Mono.empty());
 
         sut.deliver(smog, message).as(StepVerifier::create).verifyComplete();
 
-        verify(discordBotService).sendHouseholdMessage(message);
+        verify(discordBotService).sendHouseholdMessage(any(), eq(message));
+        verifyNoInteractions(smsRecipients);
+    }
+
+    //HAS-451: the doorbell goes to the channel of the event with the message as it is - never texted, so nobody is asked
+    @Test
+    void should_post_the_doorbell_as_it_is_without_asking_for_recipients() {
+        final HouseholdNotification ring = HouseholdNotification.builder()
+            .event(HouseholdEvent.DOORBELL_RINGING).subject("Intercom").deviceId(146L)
+            .occurredAt(LocalDateTime.of(2026, 11, 18, 8, 22)).reminder(0).build();
+        final HouseholdMessage message = HouseholdMessages.of(ring);
+        when(discordBotService.sendHouseholdMessage(ring, message)).thenReturn(Mono.empty());
+
+        sut.deliver(ring, message).as(StepVerifier::create).verifyComplete();
+
+        verify(discordBotService).sendHouseholdMessage(ring, message);
         verifyNoInteractions(smsRecipients);
     }
 
@@ -115,11 +132,11 @@ class DiscordHouseholdTransportTest {
         final SmsRecipients sms = mock(SmsRecipients.class);
         when(smsRecipients.getIfAvailable()).thenReturn(sms);
         when(sms.recipients()).thenReturn(Mono.just(List.of()), Mono.error(new IllegalStateException("presence-service answered 503")));
-        when(discordBotService.sendHouseholdMessage(MESSAGE)).thenReturn(Mono.empty());
+        when(discordBotService.sendHouseholdMessage(any(), eq(MESSAGE))).thenReturn(Mono.empty());
 
         sut.deliver(NOTIFICATION, MESSAGE).as(StepVerifier::create).verifyComplete();
         sut.deliver(NOTIFICATION, MESSAGE).as(StepVerifier::create).verifyComplete();
 
-        verify(discordBotService, times(2)).sendHouseholdMessage(MESSAGE);
+        verify(discordBotService, times(2)).sendHouseholdMessage(any(), eq(MESSAGE));
     }
 }

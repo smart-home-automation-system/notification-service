@@ -1,5 +1,6 @@
 package cloud.cholewa.notification.household.push;
 
+import cloud.cholewa.notification.household.members.HouseholdRegistryClient;
 import cloud.cholewa.notification.household.members.PresentMembersClient;
 import cloud.cholewa.home.model.HouseholdEvent;
 import cloud.cholewa.home.model.HouseholdNotification;
@@ -45,6 +46,7 @@ class WebPushHouseholdTransportTest {
     private static final HouseholdMessage MESSAGE = HouseholdMessages.of(FINISHED);
 
     private final PresentMembersClient presentMembers = mock(PresentMembersClient.class);
+    private final HouseholdRegistryClient registry = mock(HouseholdRegistryClient.class);
     private final PushSubscriptionsClient subscriptions = mock(PushSubscriptionsClient.class);
     private final WebPushSender sender = mock(WebPushSender.class);
     private final JsonMapper jsonMapper = JsonMapper.builder().build();
@@ -52,13 +54,60 @@ class WebPushHouseholdTransportTest {
 
     @BeforeEach
     void setUp() {
-        sut = new WebPushHouseholdTransport(presentMembers, subscriptions, sender,
+        sut = new WebPushHouseholdTransport(presentMembers, registry, subscriptions, sender,
             List.of("push.apple.com", " FCM.googleapis.com "), jsonMapper);
     }
 
     @Test
     void should_be_named_push_in_the_log() {
         assertThat(sut.name()).isEqualTo("push");
+    }
+
+    private static HouseholdNotification intercom(final HouseholdEvent event) {
+        return HouseholdNotification.builder().event(event).subject("Intercom").deviceId(146L)
+            .occurredAt(LocalDateTime.of(2026, 11, 18, 8, 22)).reminder(0).acknowledgePath("/gate").build();
+    }
+
+    //HAS-451: a ring reaches every switched-on member, at home or not - presence-service is not asked
+    @Test
+    void should_push_the_doorbell_to_every_switched_on_member_at_home_or_not() {
+        final HouseholdNotification ring = intercom(HouseholdEvent.DOORBELL_RINGING);
+        when(registry.members()).thenReturn(Mono.just(List.of(
+            new HouseholdRegistryClient.Member("Ola", null, true, "resident"),
+            new HouseholdRegistryClient.Member("Jan", "+48500000002", false, "admin"),
+            new HouseholdRegistryClient.Member("Ewa", null, true, "admin"))));
+        when(subscriptions.ofMembers(List.of("Ola", "Ewa"))).thenReturn(Mono.just(List.of(subscription(APPLE))));
+        when(sender.send(any(), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.DELIVERED));
+
+        sut.deliver(ring, HouseholdMessages.of(ring)).as(StepVerifier::create).verifyComplete();
+
+        final ArgumentCaptor<byte[]> payload = ArgumentCaptor.forClass(byte[].class);
+        verify(sender).send(any(), any(), payload.capture());
+        final JsonNode shown = jsonMapper.readTree(payload.getValue()).get("notification");
+        assertThat(shown.get("title").asString()).isEqualTo("Domofon");
+        assertThat(shown.get("tag").asString()).isEqualTo("doorbell-146");
+        assertThat(shown.get("requireInteraction").asBoolean()).isTrue();
+        assertThat(shown.get("data").get("path").asString()).isEqualTo("/gate");
+        verifyNoInteractions(presentMembers);
+    }
+
+    //a registry that cannot be read fails the transport - never a push to the members at home instead
+    @Test
+    void should_fail_the_doorbell_when_the_registry_cannot_be_read() {
+        final HouseholdNotification ring = intercom(HouseholdEvent.DOORBELL_RINGING);
+        when(registry.members()).thenReturn(Mono.error(new IllegalStateException("database-service answered 503")));
+
+        sut.deliver(ring, HouseholdMessages.of(ring)).as(StepVerifier::create).verifyError(IllegalStateException.class);
+
+        verifyNoInteractions(presentMembers, sender);
+    }
+
+    //the opening of the gate is never pushed; every other event is
+    @Test
+    void should_carry_every_event_but_the_opening_of_the_gate() {
+        assertThat(sut.carries(intercom(HouseholdEvent.GATE_OPENED))).isFalse();
+        assertThat(sut.carries(intercom(HouseholdEvent.DOORBELL_RINGING))).isTrue();
+        assertThat(sut.carries(FINISHED)).isTrue();
     }
 
     @Test
