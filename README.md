@@ -67,7 +67,7 @@ costs and wakes somebody.
 **The household category** (since 0.5.0, HAS-274) is for the people who live in the house, in
 Polish, on a Discord channel of its own (`discord.bot.skippy.household-channel-id`, environment
 variable `discord_household_channel_id`, mandatory like the alerts channel). Its payload is the
-JSON `HouseholdNotification` of `smart-home-sdk` (1.22.0) - what happened to which device, never a
+JSON `HouseholdNotification` of `smart-home-sdk` (1.23.0) - what happened to which device, never a
 text: the words are composed here (`HouseholdMessages`), one embed per message with the device as
 the title, the sentence as the description, the time of the house (`dd.MM.yyyy HH:mm`) in the
 footer and the bar colored by the event. The three appliances of the registry are told by their
@@ -83,6 +83,10 @@ Polish names, whatever the case of the registry name (`Washing machine` - `Pralk
 | `smog over` (since HAS-430) | `Powietrze na zewnątrz znów w normie (PM10 35 µg/m³).` | green |
 | `doorbell ringing` (since HAS-451, published by gate-service) | title `Domofon`: `Ktoś dzwoni do bramy.` | blue |
 | `gate opened` (since HAS-451) | title `Brama`: `Brama otwarta z ekranu domofonu.`; from the application `Brama otwarta z aplikacji - otwiera <member>.` | green |
+| `garage gate open cold` (since HAS-472, published by gate-service) | title `Brama garażowa <name>`: `Otwarta od 15 min, a na zewnątrz 7,5 °C - zamknij ją.`; a repeat ends `(przypomnienie <n>)` | red |
+| `garage gate open empty house` (since HAS-472) | `Otwarta od 5 min, a w domu nikogo nie ma - zamknij ją.` | red |
+| `garage gate open long` (since HAS-472) | `Otwarta od 30 min.` | amber |
+| `garage gate closed` (since HAS-472) | `Zamknięta po 42 min.` | green |
 
 Any other device keeps its registry name, in sentences without a gendered verb:
 `Koniec pracy: <device> - wymaga opróżnienia.`, `Przypomnienie <n>: <device> nadal czeka na
@@ -100,6 +104,16 @@ other two): `doorbell ringing` and `gate opened` go there only - not to the hous
 every switched-on member of the registry, at home or not** (somebody away may let the caller in), and opens the page
 of its `acknowledgePath` on a click; **the opening of the gate is never pushed**; **neither is ever texted**. No
 picture - the station gives none.
+
+**A garage gate left open** (HAS-472, `smart-home-sdk` 1.23.0) goes to the intercom channel too: how long it stands
+open from `openSince`, the temperature of the cold alarm, the number of a repeat. **The three open events are pushed to
+every switched-on member, at home or not** (nobody at home is one of its alarms), tag `garage-gate-<deviceId>` - a
+repeat replaces the message of the same gate and sounds again; `garage gate closed` is never pushed. **Only the first
+message of an alarm** (`cold`, `empty house`, `reminder` 0) **is texted, to the members of
+`household.garage.sms-members`** (environment variable `garage-sms-members`, comma-separated names of the registry -
+never written in this repository), at home or not, each switched on with a phone; the Discord footer names them. The
+The SMS puts the title before the sentence - `Brama garażowa Kate: Otwarta od 15 min, ...` - which names no gate. The
+warning, a repeat and the end are never texted (owner, 2026-11-18). No name set is no SMS of a garage alarm, and a WARN.
 
 **SMS** (HAS-275) puts the sentence of the Discord message, cut to 160 characters, on the phones
 of the members at home - one SMS per member a message, through SMSAPI (`POST /sms.do`, the
@@ -207,7 +221,7 @@ Base path `/home/notification` (`spring.webflux.base-path`). The endpoint is not
 | `POST` | `/home/notification/requests/announce` | The announcements of the requests ticked off by hand (since 0.10.0, HAS-416): runs the pass of the minute once and answers `202 Accepted` with `{"messages": <delivered>, "marked": <requests marked>}`. Not routed. Never fails. |
 | `POST` | `/home/notification/requests/remind` | The evening pass by hand (since 0.10.0, HAS-416): the reminders of the recipients not reminded today and the announcements of the requests still open, as at 20:00; `202 Accepted` with `{"messages", "marked"}`. Not routed. Never fails. |
 | `POST` | `/home/notification/requests/send` | The SMS of the household requests by hand (since 0.9.0, HAS-410) - the check of the minute after a deploy: runs the pass of 08:00 once - every member with a pending request is texted - and answers `202 Accepted` with `{"sms": <accepted>, "marked": <requests marked sent>}`. Not routed by the gateway (a port-forward). Never fails: what went wrong is in the log; with the SMS switched off it texts nothing and answers `0`. |
-| `GET` | `/home/notification/skippy?category=household&event=<event>&subject=<device>&reminder=<n>&member=<name>` | The smoke test of the household channel (since 0.5.0): a household notification of a made-up device, worded as the queue words one and posted to the household channel - **Discord only** by default, never the push. With `sms=true` (since HAS-275) the same words also go by SMS to the **administrators** of the household, at home or not - one SMS to the owner, never to every member. `event` defaults to `appliance finished`, `subject` to `Zmywarka` (3-50 characters), `reminder` to `0` (0-10); `member` (3-50, optional, HAS-347) names who acknowledged it. `event=smog` (since HAS-430) is a sample `smog warning` of the air quality sensor (PM10 112, PM2.5 78) - Discord only, `sms=true` with it is a `400`. `event=doorbell` (since HAS-451) is a sample `doorbell ringing`, posted to the intercom channel - as is `event=gate opened`; `sms=true` with either is a `400`. `200 OK`; `400` for an unknown event or a bound broken; `409` for `sms=true` while the SMS is switched off; `502` when Discord refuses. |
+| `GET` | `/home/notification/skippy?category=household&event=<event>&subject=<device>&reminder=<n>&member=<name>` | The smoke test of the household channel (since 0.5.0): a household notification of a made-up device, worded as the queue words one and posted to the household channel - **Discord only** by default, never the push. With `sms=true` (since HAS-275) the same words also go by SMS to the **administrators** of the household, at home or not - one SMS to the owner, never to every member. `event` defaults to `appliance finished`, `subject` to `Zmywarka` (3-50 characters), `reminder` to `0` (0-10); `member` (3-50, optional, HAS-347) names who acknowledged it. `event=smog` (since HAS-430) is a sample `smog warning` of the air quality sensor (PM10 112, PM2.5 78) - Discord only, `sms=true` with it is a `400`. `event=garage` (since HAS-472) is a sample `garage gate open cold` of a gate `Test` (open 15 min, 7.5 °C) on the intercom channel - Discord only, `sms=true` with it is a `400`. `event=doorbell` (since HAS-451) is a sample `doorbell ringing`, posted to the intercom channel - as is `event=gate opened`; `sms=true` with either is a `400`. `200 OK`; `400` for an unknown event or a bound broken; `409` for `sms=true` while the SMS is switched off; `502` when Discord refuses. |
 
 # Messaging
 

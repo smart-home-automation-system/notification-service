@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
 //same cached read as the SMS transport's, asked at the same moment; a read that fails or takes long
 //leaves the footer as it was: the message never waits for it, nor fails because of it. The smog (HAS-430) is never
 //texted, so its footer names nobody. The doorbell and the gate (HAS-451) go to the intercom channel alone, never
-//texted either
+//texted either; of a garage gate (HAS-472) the first message of an alarm names the members texted for it
 @Component
 @RequiredArgsConstructor
 public class DiscordHouseholdTransport implements HouseholdTransport {
@@ -35,16 +35,17 @@ public class DiscordHouseholdTransport implements HouseholdTransport {
     @Override
     public Mono<Void> deliver(final HouseholdNotification notification, final HouseholdMessage message) {
         return Mono.just(message)
-            .filter(texted -> !HouseholdMessages.isSmog(notification) && !HouseholdMessages.isIntercom(notification))
-            .flatMap(this::withRecipients)
+            .filter(texted -> HouseholdMessages.isTexted(notification))
+            .flatMap(texted -> withRecipients(notification, texted))
             .defaultIfEmpty(message)
             .flatMap(posted -> discordBotService.sendHouseholdMessage(notification, posted))
             .retryWhen(DiscordDeliveryRetry.spec());
     }
 
-    private Mono<HouseholdMessage> withRecipients(final HouseholdMessage message) {
+    private Mono<HouseholdMessage> withRecipients(final HouseholdNotification notification,
+                                                  final HouseholdMessage message) {
         return Mono.justOrEmpty(smsRecipients.getIfAvailable())
-            .flatMap(sms -> sms.recipients().timeout(RECIPIENTS_WITHIN))
+            .flatMap(sms -> sms.of(notification).timeout(RECIPIENTS_WITHIN))
             .filter(found -> !found.isEmpty())
             .map(found -> message.withFooter("SMS: " + found.stream()
                 .map(SmsRecipients.Recipient::name)

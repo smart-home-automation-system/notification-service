@@ -20,7 +20,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 @Configuration
 @ConditionalOnBooleanProperty("household.sms.enabled")
-@EnableConfigurationProperties(SmsProperties.class)
+@EnableConfigurationProperties({SmsProperties.class, GarageProperties.class})
 class SmsConfig {
 
     @Bean(destroyMethod = "dispose")
@@ -49,8 +49,9 @@ class SmsConfig {
     }
 
     @Bean
-    SmsRecipients smsRecipients(final PresentMembersClient presentMembers, final HouseholdRegistryClient registry) {
-        return new SmsRecipients(presentMembers, registry);
+    SmsRecipients smsRecipients(final PresentMembersClient presentMembers, final HouseholdRegistryClient registry,
+                                final GarageProperties garage) {
+        return new SmsRecipients(presentMembers, registry, garage.smsMembers());
     }
 
     @Bean

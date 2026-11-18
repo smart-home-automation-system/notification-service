@@ -96,6 +96,10 @@ household:
     token: ${smsapi-token:}
     connect-timeout: 5s
     response-timeout: 15s
+  # the SMS of the alarm of a garage gate (HAS-472): the members of the registry texted the first message of an
+  # alarm, at home or not - comma-separated names from the manifest, never written here; none is no SMS (a WARN)
+  garage:
+    sms-members: ${garage-sms-members:}
   # the SMS of the household requests (HAS-410): every day at send-at in the zone of the house - the pod runs
   # in UTC - the pending requests of database-service texted to their recipients and marked sent. A cron of
   # Spring, six fields. POST /home/notification/requests/send runs the same pass by hand

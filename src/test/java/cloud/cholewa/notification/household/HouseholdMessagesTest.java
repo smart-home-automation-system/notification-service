@@ -100,7 +100,8 @@ class HouseholdMessagesTest {
     //every event of an appliance has words, a title and a footer - the smog (HAS-430) and the intercom (HAS-451) have
     //their own tests
     @ParameterizedTest
-    @EnumSource(value = HouseholdEvent.class, names = {"SMOG_WARNING", "SMOG_OVER", "DOORBELL_RINGING", "GATE_OPENED"}, mode = EnumSource.Mode.EXCLUDE)
+    @EnumSource(value = HouseholdEvent.class, names = {"SMOG_WARNING", "SMOG_OVER", "DOORBELL_RINGING", "GATE_OPENED", "GARAGE_GATE_OPEN_COLD",
+        "GARAGE_GATE_OPEN_EMPTY_HOUSE", "GARAGE_GATE_OPEN_LONG", "GARAGE_GATE_CLOSED"}, mode = EnumSource.Mode.EXCLUDE)
     void should_word_every_event(final HouseholdEvent event) {
         final HouseholdMessage message = HouseholdMessages.of(notification("Dishwasher", event, 1));
 
@@ -111,7 +112,8 @@ class HouseholdMessagesTest {
 
     //and the same for a device without a Polish name
     @ParameterizedTest
-    @EnumSource(value = HouseholdEvent.class, names = {"SMOG_WARNING", "SMOG_OVER", "DOORBELL_RINGING", "GATE_OPENED"}, mode = EnumSource.Mode.EXCLUDE)
+    @EnumSource(value = HouseholdEvent.class, names = {"SMOG_WARNING", "SMOG_OVER", "DOORBELL_RINGING", "GATE_OPENED", "GARAGE_GATE_OPEN_COLD",
+        "GARAGE_GATE_OPEN_EMPTY_HOUSE", "GARAGE_GATE_OPEN_LONG", "GARAGE_GATE_CLOSED"}, mode = EnumSource.Mode.EXCLUDE)
     void should_word_every_event_of_another_device(final HouseholdEvent event) {
         final HouseholdMessage message = HouseholdMessages.of(notification("Coffee machine", event, 1));
 
@@ -209,6 +211,78 @@ class HouseholdMessagesTest {
         assertThat(HouseholdMessages.isIntercom(notification("Gate", HouseholdEvent.GATE_OPENED, 0))).isTrue();
         assertThat(HouseholdMessages.isIntercom(smog(HouseholdEvent.SMOG_WARNING, 1, 1))).isFalse();
         assertThat(HouseholdMessages.isIntercom(notification("Dryer", HouseholdEvent.APPLIANCE_FINISHED, 0))).isFalse();
+    }
+
+    //HAS-472: a garage gate left open, worded on the intercom channel - the words are the owner's call on a real message
+    @Test
+    void should_word_a_garage_gate_left_open() {
+        final HouseholdNotification cold = garage(HouseholdEvent.GARAGE_GATE_OPEN_COLD, 0, 15).temperature(7.46);
+        final HouseholdNotification empty = garage(HouseholdEvent.GARAGE_GATE_OPEN_EMPTY_HOUSE, 0, 5);
+        final HouseholdNotification open = garage(HouseholdEvent.GARAGE_GATE_OPEN_LONG, 0, 30);
+        final HouseholdNotification closed = garage(HouseholdEvent.GARAGE_GATE_CLOSED, 0, 42);
+
+        assertThat(HouseholdMessages.of(cold).title()).isEqualTo("Brama garażowa Kate");
+        assertThat(HouseholdMessages.of(cold).text()).isEqualTo("Otwarta od 15 min, a na zewnątrz 7,5 °C - zamknij ją.");
+        assertThat(HouseholdMessages.of(empty).text())
+            .isEqualTo("Otwarta od 5 min, a w domu nikogo nie ma - zamknij ją.");
+        assertThat(HouseholdMessages.of(open).text()).isEqualTo("Otwarta od 30 min.");
+        assertThat(HouseholdMessages.of(closed).text()).isEqualTo("Zamknięta po 42 min.");
+        assertThat(HouseholdMessages.of(cold).footer()).isEqualTo("24.10.2026 19:05");
+    }
+
+    //a repeat says its number, an hour is an hour, and what the payload leaves out is left out of the words
+    @Test
+    void should_word_a_repeat_and_the_hours_and_what_is_missing() {
+        assertThat(HouseholdMessages.of(garage(HouseholdEvent.GARAGE_GATE_OPEN_COLD, 2, 75).temperature(-3.0)).text())
+            .isEqualTo("Otwarta od 1 h 15 min, a na zewnątrz -3,0 °C - zamknij ją. (przypomnienie 2)");
+        assertThat(HouseholdMessages.of(garage(HouseholdEvent.GARAGE_GATE_OPEN_LONG, 1, 120)).text())
+            .isEqualTo("Otwarta od 2 h. (przypomnienie 1)");
+        assertThat(HouseholdMessages.of(notification("Kate", HouseholdEvent.GARAGE_GATE_OPEN_COLD, 0)).text())
+            .isEqualTo("Otwarta, a na zewnątrz jest zimno - zamknij ją.");
+        assertThat(HouseholdMessages.of(notification("Kate", HouseholdEvent.GARAGE_GATE_CLOSED, 0)).text())
+            .isEqualTo("Zamknięta.");
+        assertThat(HouseholdMessages.of(notification(" ", HouseholdEvent.GARAGE_GATE_CLOSED, 0)).title())
+            .isEqualTo("Brama garażowa");
+    }
+
+    //the night the clocks go back (2026-10-25, 03:00 becomes 02:00) 01:30 to 03:30 of the house is three hours
+    @Test
+    void should_count_the_hour_the_clocks_go_back() {
+        final HouseholdNotification closed = HouseholdNotification.builder()
+            .event(HouseholdEvent.GARAGE_GATE_CLOSED).subject("Kate").deviceId(148L).reminder(0)
+            .openSince(LocalDateTime.of(2026, 10, 25, 1, 30)).occurredAt(LocalDateTime.of(2026, 10, 25, 3, 30)).build();
+
+        assertThat(HouseholdMessages.of(closed).text()).isEqualTo("Zamknięta po 3 h.");
+    }
+
+    @Test
+    void should_colour_the_alarms_red_the_warning_amber_and_the_end_green() {
+        assertThat(HouseholdMessages.of(garage(HouseholdEvent.GARAGE_GATE_OPEN_COLD, 0, 15)).color())
+            .isEqualTo(HouseholdMessages.GARAGE_ALARM_COLOR);
+        assertThat(HouseholdMessages.of(garage(HouseholdEvent.GARAGE_GATE_OPEN_EMPTY_HOUSE, 0, 5)).color())
+            .isEqualTo(HouseholdMessages.GARAGE_ALARM_COLOR);
+        assertThat(HouseholdMessages.of(garage(HouseholdEvent.GARAGE_GATE_OPEN_LONG, 0, 30)).color())
+            .isEqualTo(HouseholdMessages.GARAGE_WARNING_COLOR);
+        assertThat(HouseholdMessages.of(garage(HouseholdEvent.GARAGE_GATE_CLOSED, 0, 30)).color())
+            .isEqualTo(HouseholdMessages.GARAGE_CLOSED_COLOR);
+    }
+
+    //on the intercom channel; texted only the first message of an alarm (owner, 2026-11-18)
+    @Test
+    void should_text_only_the_first_message_of_a_garage_alarm() {
+        assertThat(HouseholdMessages.isIntercom(garage(HouseholdEvent.GARAGE_GATE_OPEN_LONG, 0, 30))).isTrue();
+        assertThat(HouseholdMessages.isTexted(garage(HouseholdEvent.GARAGE_GATE_OPEN_COLD, 0, 15))).isTrue();
+        assertThat(HouseholdMessages.isTexted(garage(HouseholdEvent.GARAGE_GATE_OPEN_EMPTY_HOUSE, 0, 5))).isTrue();
+        assertThat(HouseholdMessages.isTexted(garage(HouseholdEvent.GARAGE_GATE_OPEN_COLD, 1, 45))).isFalse();
+        assertThat(HouseholdMessages.isTexted(garage(HouseholdEvent.GARAGE_GATE_OPEN_LONG, 0, 30))).isFalse();
+        assertThat(HouseholdMessages.isTexted(garage(HouseholdEvent.GARAGE_GATE_CLOSED, 0, 30))).isFalse();
+        assertThat(HouseholdMessages.isTexted(notification("Intercom", HouseholdEvent.DOORBELL_RINGING, 0))).isFalse();
+        assertThat(HouseholdMessages.isTexted(smog(HouseholdEvent.SMOG_WARNING, 1, 1))).isFalse();
+        assertThat(HouseholdMessages.isTexted(notification("Dryer", HouseholdEvent.APPLIANCE_FINISHED, 0))).isTrue();
+    }
+
+    private static HouseholdNotification garage(final HouseholdEvent event, final int reminder, final int openMinutes) {
+        return notification("Kate", event, reminder).openSince(AT.minusMinutes(openMinutes));
     }
 
     private static HouseholdNotification smog(final HouseholdEvent event, final Integer pm10, final Integer pm25) {

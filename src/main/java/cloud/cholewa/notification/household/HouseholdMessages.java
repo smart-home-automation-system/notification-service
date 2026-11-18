@@ -6,6 +6,8 @@ import cloud.cholewa.home.model.HouseholdNotification;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
+import java.time.Duration;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Map;
@@ -31,6 +33,11 @@ import java.util.Optional;
  * <p>The intercom (HAS-451, smart-home-sdk 1.22.0, published by gate-service): a ring at the gate and an opening of
  * the gate, told by what they are - "Domofon", "Brama" - not by the registry names of the station and the Shelly.
  * An opening says where it came from: the indoor screen, or the application by the member it names.
+ *
+ * <p>A garage gate left open (HAS-472, smart-home-sdk 1.23.0, published by gate-service - HAS-475): told on the
+ * intercom channel as "Brama garażowa" and the registry name of the gate ({@code Kate}), how long it stands open from
+ * {@code openSince}, the temperature of the cold alarm, the number of a repeat. The two alarms (cold, empty house) in
+ * red, the warning (open long) in amber, the end in green.
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class HouseholdMessages {
@@ -47,6 +54,14 @@ public final class HouseholdMessages {
     static final int GATE_OPENED_COLOR = 0x2ECC71;
     static final String DOORBELL_TITLE = "Domofon";
     static final String GATE_TITLE = "Brama";
+    //a garage gate left open (HAS-472): an alarm asks somebody to close it, the warning only says so, closed is done
+    static final int GARAGE_ALARM_COLOR = 0xE74C3C;
+    static final int GARAGE_WARNING_COLOR = 0xF39C12;
+    static final int GARAGE_CLOSED_COLOR = 0x2ECC71;
+    static final String GARAGE_TITLE = "Brama garażowa";
+    private static final Locale POLISH = Locale.forLanguageTag("pl");
+    //the clock the publishers stamp occurredAt and openSince with
+    private static final ZoneId HOUSE = ZoneId.of("Europe/Warsaw");
 
     //the GIOS index: above these (ug/m3) the air is very bad (level 6)
     static final int PM10_VERY_BAD = 150;
@@ -94,7 +109,8 @@ public final class HouseholdMessages {
                 name, acknowledgedBy(notification, name + " opróżniona")
                     .orElse(name + " opróżniona - dziękujemy!"), footer, ACKNOWLEDGED_COLOR);
             case SMOG_WARNING, SMOG_OVER -> smog(notification, footer);
-            case DOORBELL_RINGING, GATE_OPENED -> intercom(notification, footer);
+            case DOORBELL_RINGING, GATE_OPENED, GARAGE_GATE_OPEN_COLD, GARAGE_GATE_OPEN_EMPTY_HOUSE, GARAGE_GATE_OPEN_LONG,
+                 GARAGE_GATE_CLOSED -> intercom(notification, footer);
         };
     }
 
@@ -147,21 +163,105 @@ public final class HouseholdMessages {
                 subject, acknowledgedBy(notification, subject)
                     .orElse(subject + " - potwierdzone, dziękujemy."), footer, ACKNOWLEDGED_COLOR);
             case SMOG_WARNING, SMOG_OVER -> smog(notification, footer);
-            case DOORBELL_RINGING, GATE_OPENED -> intercom(notification, footer);
+            case DOORBELL_RINGING, GATE_OPENED, GARAGE_GATE_OPEN_COLD, GARAGE_GATE_OPEN_EMPTY_HOUSE, GARAGE_GATE_OPEN_LONG,
+                 GARAGE_GATE_CLOSED -> intercom(notification, footer);
         };
     }
 
-    //the events of the intercom (HAS-451) - on a Discord channel of their own, never texted
+    //the events of the intercom (HAS-451) and of the garage gates (HAS-472) - on the intercom channel of Discord
     public static boolean isIntercom(final HouseholdNotification notification) {
         return notification.getEvent() == HouseholdEvent.DOORBELL_RINGING
-            || notification.getEvent() == HouseholdEvent.GATE_OPENED;
+            || notification.getEvent() == HouseholdEvent.GATE_OPENED
+            || isGarageGate(notification);
+    }
+
+    //a garage gate left open, or closed after it (HAS-472)
+    public static boolean isGarageGate(final HouseholdNotification notification) {
+        return notification.getEvent() == HouseholdEvent.GARAGE_GATE_OPEN_COLD
+            || notification.getEvent() == HouseholdEvent.GARAGE_GATE_OPEN_EMPTY_HOUSE
+            || notification.getEvent() == HouseholdEvent.GARAGE_GATE_OPEN_LONG
+            || notification.getEvent() == HouseholdEvent.GARAGE_GATE_CLOSED;
+    }
+
+    //the two alarms of a garage gate (HAS-472) - a gate open while it is cold, or while nobody is at home
+    public static boolean isGarageAlarm(final HouseholdNotification notification) {
+        return notification.getEvent() == HouseholdEvent.GARAGE_GATE_OPEN_COLD
+            || notification.getEvent() == HouseholdEvent.GARAGE_GATE_OPEN_EMPTY_HOUSE;
+    }
+
+    /**
+     * Whether a message goes by SMS: never the smog (HAS-430) nor the doorbell and the gate (HAS-451); of a garage
+     * gate only the first message of an alarm (HAS-472, owner 2026-11-18 - the warning, a repeat and the end never) -
+     * and that one to the members named for it, at home or not.
+     */
+    public static boolean isTexted(final HouseholdNotification notification) {
+        if (isGarageAlarm(notification)) {
+            return Integer.valueOf(0).equals(notification.getReminder());
+        }
+        return !isSmog(notification) && !isIntercom(notification);
     }
 
     private static HouseholdMessage intercom(final HouseholdNotification notification, final String footer) {
+        if (isGarageGate(notification)) {
+            return garageGate(notification, footer);
+        }
         if (notification.getEvent() == HouseholdEvent.DOORBELL_RINGING) {
             return new HouseholdMessage(DOORBELL_TITLE, "Ktoś dzwoni do bramy.", footer, DOORBELL_COLOR);
         }
         return new HouseholdMessage(GATE_TITLE, gateOpened(notification), footer, GATE_OPENED_COLOR);
+    }
+
+    //"Brama garażowa Kate": the registry name after the noun - nominative, no gender to agree with
+    private static HouseholdMessage garageGate(final HouseholdNotification notification, final String footer) {
+        final String title = Optional.ofNullable(notification.getSubject())
+            .map(String::strip)
+            .filter(name -> !name.isEmpty())
+            .map(name -> GARAGE_TITLE + " " + name)
+            .orElse(GARAGE_TITLE);
+        final String open = openFor(notification).map(time -> "Otwarta od " + time).orElse("Otwarta");
+        return switch (notification.getEvent()) {
+            case GARAGE_GATE_OPEN_COLD -> new HouseholdMessage(title,
+                open + temperature(notification) + " - zamknij ją." + repeat(notification), footer, GARAGE_ALARM_COLOR);
+            case GARAGE_GATE_OPEN_EMPTY_HOUSE -> new HouseholdMessage(title,
+                open + ", a w domu nikogo nie ma - zamknij ją." + repeat(notification), footer, GARAGE_ALARM_COLOR);
+            case GARAGE_GATE_OPEN_LONG -> new HouseholdMessage(title,
+                open + "." + repeat(notification), footer, GARAGE_WARNING_COLOR);
+            default -> new HouseholdMessage(title,
+                openFor(notification).map(time -> "Zamknięta po " + time + ".").orElse("Zamknięta."), footer,
+                GARAGE_CLOSED_COLOR);
+        };
+    }
+
+    //how long it stands open: from openSince to the moment of the message, both in the time of the house - compared as
+    //instants of its zone, so the night the clocks change counts the hour that was or was not
+    private static Optional<String> openFor(final HouseholdNotification notification) {
+        return Optional.ofNullable(notification.getOpenSince())
+            .map(since -> Duration.between(since.atZone(HOUSE), notification.getOccurredAt().atZone(HOUSE)))
+            .filter(open -> !open.isNegative())
+            .map(open -> minutesAndHours(open.toMinutes()));
+    }
+
+    //"15 min", "2 h", "1 h 15 min"
+    private static String minutesAndHours(final long minutes) {
+        if (minutes < 60) {
+            return minutes + " min";
+        }
+        final long rest = minutes % 60;
+        final String hours = minutes / 60 + " h";
+        return rest == 0 ? hours : hours + " " + rest + " min";
+    }
+
+    //", a na zewnątrz 7,5 °C" - the reading that made it an alarm, in the decimal comma of the house
+    private static String temperature(final HouseholdNotification notification) {
+        return Optional.ofNullable(notification.getTemperature())
+            .map(degrees -> String.format(POLISH, ", a na zewnątrz %.1f °C", degrees))
+            .orElse(", a na zewnątrz jest zimno");
+    }
+
+    //the payload counts the repeats: 0 is the first message (required - the reader refuses a payload without it)
+    private static String repeat(final HouseholdNotification notification) {
+        final int reminder = notification.getReminder();
+        return reminder == 0 ? "" : " (przypomnienie " + reminder + ")";
     }
 
     //from the screen, from the application by a member (the name after the verb, no case), or from where not known

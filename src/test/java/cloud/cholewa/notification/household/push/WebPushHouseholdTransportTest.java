@@ -102,9 +102,37 @@ class WebPushHouseholdTransportTest {
         verifyNoInteractions(presentMembers, sender);
     }
 
-    //the opening of the gate is never pushed; every other event is
+    //HAS-472: a garage gate left open reaches every switched-on member, at home or not - nobody at home is one of its
+    //alarms; a repeat replaces the message of the same gate and sounds again
+    @Test
+    void should_push_a_garage_gate_left_open_to_every_switched_on_member() {
+        final HouseholdNotification empty = HouseholdNotification.builder()
+            .event(HouseholdEvent.GARAGE_GATE_OPEN_EMPTY_HOUSE).subject("Kate").deviceId(148L)
+            .occurredAt(LocalDateTime.of(2026, 11, 18, 19, 5)).reminder(1)
+            .openSince(LocalDateTime.of(2026, 11, 18, 18, 30)).acknowledgePath("/gate").build();
+        when(registry.members()).thenReturn(Mono.just(List.of(
+            new HouseholdRegistryClient.Member("Ola", null, true, "resident"),
+            new HouseholdRegistryClient.Member("Jan", null, false, "admin"))));
+        when(subscriptions.ofMembers(List.of("Ola"))).thenReturn(Mono.just(List.of(subscription(APPLE))));
+        when(sender.send(any(), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.DELIVERED));
+
+        sut.deliver(empty, HouseholdMessages.of(empty)).as(StepVerifier::create).verifyComplete();
+
+        final ArgumentCaptor<byte[]> payload = ArgumentCaptor.forClass(byte[].class);
+        verify(sender).send(any(), any(), payload.capture());
+        final JsonNode shown = jsonMapper.readTree(payload.getValue()).get("notification");
+        assertThat(shown.get("title").asString()).isEqualTo("Brama garażowa Kate");
+        assertThat(shown.get("tag").asString()).isEqualTo("garage-gate-148");
+        assertThat(shown.get("renotify").asBoolean()).isTrue();
+        assertThat(shown.get("data").get("path").asString()).isEqualTo("/gate");
+        verifyNoInteractions(presentMembers);
+    }
+
+    //the opening of the gate and a garage gate closed are never pushed; every other event is
     @Test
     void should_carry_every_event_but_the_opening_of_the_gate() {
+        assertThat(sut.carries(intercom(HouseholdEvent.GARAGE_GATE_CLOSED))).isFalse();
+        assertThat(sut.carries(intercom(HouseholdEvent.GARAGE_GATE_OPEN_LONG))).isTrue();
         assertThat(sut.carries(intercom(HouseholdEvent.GATE_OPENED))).isFalse();
         assertThat(sut.carries(intercom(HouseholdEvent.DOORBELL_RINGING))).isTrue();
         assertThat(sut.carries(FINISHED)).isTrue();

@@ -41,7 +41,7 @@ class SmsHouseholdTransportTest {
 
     @Test
     void should_text_every_member_at_home_the_words_of_the_message() {
-        when(recipients.recipients()).thenReturn(Mono.just(List.of(OLA, JAN)));
+        when(recipients.of(any())).thenReturn(Mono.just(List.of(OLA, JAN)));
         when(client.send(anyString(), anyString(), anyString())).thenReturn(Mono.just(true));
 
         sut.deliver(FINISHED, MESSAGE).as(StepVerifier::create).verifyComplete();
@@ -74,10 +74,35 @@ class SmsHouseholdTransportTest {
         verifyNoInteractions(recipients, client);
     }
 
+    //HAS-472: of a garage gate only the first message of an alarm, to the members named for it
+    @Test
+    void should_carry_only_the_first_message_of_a_garage_alarm() {
+        final HouseholdNotification cold = garage(HouseholdEvent.GARAGE_GATE_OPEN_COLD, 0).temperature(7.5);
+        when(recipients.of(cold)).thenReturn(Mono.just(List.of(JAN)));
+        when(client.send(eq("Jan"), anyString(), anyString())).thenReturn(Mono.just(true));
+
+        assertThat(sut.carries(cold)).isTrue();
+        assertThat(sut.carries(garage(HouseholdEvent.GARAGE_GATE_OPEN_EMPTY_HOUSE, 0))).isTrue();
+        assertThat(sut.carries(garage(HouseholdEvent.GARAGE_GATE_OPEN_COLD, 1))).isFalse();
+        assertThat(sut.carries(garage(HouseholdEvent.GARAGE_GATE_OPEN_LONG, 0))).isFalse();
+        assertThat(sut.carries(garage(HouseholdEvent.GARAGE_GATE_CLOSED, 0))).isFalse();
+
+        sut.deliver(cold, HouseholdMessages.of(cold)).as(StepVerifier::create).verifyComplete();
+
+        verify(client).send("Jan", "+48500000002", "Brama garażowa Kate: Otwarta od 15 min, a na zewnątrz 7,5 °C - zamknij ją.");
+    }
+
+    private static HouseholdNotification garage(final HouseholdEvent event, final int reminder) {
+        return HouseholdNotification.builder()
+            .event(event).subject("Kate").deviceId(148L)
+            .occurredAt(LocalDateTime.of(2026, 11, 18, 19, 15)).reminder(reminder)
+            .openSince(LocalDateTime.of(2026, 11, 18, 19, 0)).build();
+    }
+
     // Discord has the message
     @Test
     void should_text_nobody_while_nobody_is_at_home() {
-        when(recipients.recipients()).thenReturn(Mono.just(List.of()));
+        when(recipients.of(any())).thenReturn(Mono.just(List.of()));
 
         sut.deliver(FINISHED, MESSAGE).as(StepVerifier::create).verifyComplete();
 
@@ -87,7 +112,7 @@ class SmsHouseholdTransportTest {
     // never an SMS to everybody instead
     @Test
     void should_fail_when_it_cannot_learn_who_is_at_home() {
-        when(recipients.recipients()).thenReturn(Mono.error(new IllegalStateException("presence-service answered 503")));
+        when(recipients.of(any())).thenReturn(Mono.error(new IllegalStateException("presence-service answered 503")));
 
         sut.deliver(FINISHED, MESSAGE).as(StepVerifier::create).expectErrorMessage("presence-service answered 503").verify();
 
@@ -96,7 +121,7 @@ class SmsHouseholdTransportTest {
 
     @Test
     void should_be_done_when_one_sms_went_out_and_fail_when_none_did() {
-        when(recipients.recipients()).thenReturn(Mono.just(List.of(OLA, JAN)));
+        when(recipients.of(any())).thenReturn(Mono.just(List.of(OLA, JAN)));
         when(client.send(eq("Ola"), anyString(), anyString())).thenReturn(Mono.just(false));
         when(client.send(eq("Jan"), anyString(), anyString())).thenReturn(Mono.just(true), Mono.just(false));
 

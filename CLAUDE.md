@@ -38,7 +38,7 @@ review.
   household test message to the household channel (Discord only; with `sms=true` also an SMS to the
   administrators, HAS-275; on the alert call too since HAS-335). It is deliberately **not**
   routed by `api-gateway-service`.
-- Uses libraries: `smart-home-sdk` 1.22.0 (the doorbell and the gate, `source` - HAS-451; the household models, since HAS-274; `member` since HAS-347; 1.15.0 since HAS-335; `MemberRequest` of 1.17.0 since HAS-410; its marks of 1.19.0 since HAS-416; the smog events and `pm10` / `pm25` of 1.21.0 since HAS-430) and
+- Uses libraries: `smart-home-sdk` 1.23.0 (a garage gate left open, `openSince` / `temperature` - HAS-472; 1.22.0, the doorbell and the gate, `source` - HAS-451; the household models, since HAS-274; `member` since HAS-347; 1.15.0 since HAS-335; `MemberRequest` of 1.17.0 since HAS-410; its marks of 1.19.0 since HAS-416; the smog events and `pm10` / `pm25` of 1.21.0 since HAS-430) and
   `cholewa-commons` (1.14.0 since HAS-430; 1.13.0 since HAS-335; 1.12.0 since HAS-276; 1.11.0 since HAS-274). The `WebClient`s of the push
   transport are built from the injected builder, so the Logbook filter of the library logs them
   with the `traceId` - there is no own `LogbookClientHandler`, and none may be added (every call
@@ -186,6 +186,17 @@ review.
     of `acknowledgePath` (the gate page, set by gate-service). **The opening is never pushed** (`carries`). The smoke
     test `event=doorbell` (or any intercom event) posts to the intercom channel, refused with `sms=true`. No picture -
     the station gives none (HAS-444).
+  - **A garage gate left open** (HAS-472, the four `garage gate ...` events of smart-home-sdk 1.23.0, published by
+    gate-service - HAS-475): on the intercom channel (`isIntercom` covers them, `isGarageGate` tells them), title
+    `Brama garażowa <name>` - the registry name after the noun, no declension -, how long open from `openSince`, the
+    temperature of the cold alarm in the decimal comma, the repeat number. **`isTexted` is the one rule of the SMS**
+    (the transport and the Discord footer ask it): never the smog and the intercom, of a garage gate only the first
+    message of an alarm (`reminder` 0). **`SmsRecipients.of(notification)` picks who**: for a garage alarm the members of
+    `household.garage.sms-members` (`GarageProperties`, the names from the manifest - never in the repository), at home
+    or not, read from the registry for each alarm, never cached; for everything else the members at home, cached as
+    before. None of them switched on with a phone is a WARN. **Push**: the three open events to every switched-on member
+    at home or not (`toEverybody`, the rule of the ring), `garage gate closed` never; tag `garage-gate-<deviceId>`.
+    Smoke test `event=garage` (Discord only).
   - **Every transport is tried, all at once, and a failed one fails nothing else**
     (`HouseholdDispatcher`, `flatMap`): logged at ERROR with the transport named. At once and not
     in series: Discord retrying for over a minute must not hold back the SMS and the push. The

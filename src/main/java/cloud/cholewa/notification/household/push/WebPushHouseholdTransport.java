@@ -6,6 +6,7 @@ import cloud.cholewa.notification.household.members.PresentMembersClient;
 import cloud.cholewa.home.model.HouseholdNotification;
 import cloud.cholewa.home.model.PushSubscription;
 import cloud.cholewa.notification.household.HouseholdMessage;
+import cloud.cholewa.notification.household.HouseholdMessages;
 import cloud.cholewa.notification.household.HouseholdTransport;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Flux;
@@ -31,6 +32,9 @@ import java.util.List;
  * <p>
  * The doorbell (HAS-451) goes to every switched-on member of the registry, at home or not - somebody away may let
  * the caller in; the opening of the gate is never pushed (the dispatcher logs it as not carried).
+ * <p>
+ * A garage gate left open (HAS-472) goes the same way, to every switched-on member at home or not - nobody at home is
+ * one of its alarms; its end ({@code garage gate closed}) is never pushed.
  */
 @Slf4j
 class WebPushHouseholdTransport implements HouseholdTransport {
@@ -68,7 +72,8 @@ class WebPushHouseholdTransport implements HouseholdTransport {
 
     @Override
     public boolean carries(final HouseholdNotification notification) {
-        return notification.getEvent() != HouseholdEvent.GATE_OPENED;
+        return notification.getEvent() != HouseholdEvent.GATE_OPENED
+            && notification.getEvent() != HouseholdEvent.GARAGE_GATE_CLOSED;
     }
 
     @Override
@@ -86,16 +91,20 @@ class WebPushHouseholdTransport implements HouseholdTransport {
             .flatMap(found -> send(found, notification, message));
     }
 
-    //the doorbell: everybody switched on in the registry; every other event: who is at home
+    //the doorbell and a garage gate left open: everybody switched on in the registry; every other event: who is at home
     private Mono<List<String>> recipientsOf(final HouseholdNotification notification) {
         return Mono.just(notification)
-            .filter(ringing -> ringing.getEvent() == HouseholdEvent.DOORBELL_RINGING)
-            .flatMap(ringing -> registry.members())
+            .filter(WebPushHouseholdTransport::toEverybody)
+            .flatMap(everybody -> registry.members())
             .map(members -> members.stream()
                 .filter(HouseholdRegistryClient.Member::switchedOn)
                 .map(HouseholdRegistryClient.Member::name)
                 .toList())
             .switchIfEmpty(Mono.defer(presentMembers::present));
+    }
+
+    private static boolean toEverybody(final HouseholdNotification notification) {
+        return notification.getEvent() == HouseholdEvent.DOORBELL_RINGING || HouseholdMessages.isGarageGate(notification);
     }
 
     private Mono<Void> send(

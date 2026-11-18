@@ -85,7 +85,7 @@ class DiscordHouseholdTransportTest {
     void should_name_in_the_footer_the_members_the_sms_goes_to() {
         final SmsRecipients sms = mock(SmsRecipients.class);
         when(smsRecipients.getIfAvailable()).thenReturn(sms);
-        when(sms.recipients()).thenReturn(Mono.just(List.of(
+        when(sms.of(any())).thenReturn(Mono.just(List.of(
             new SmsRecipients.Recipient("Ola", "+48500000001"), new SmsRecipients.Recipient("Jan", "+48500000002"))));
         final HouseholdMessage texted = MESSAGE.withFooter("SMS: Ola, Jan");
         when(discordBotService.sendHouseholdMessage(any(), eq(texted))).thenReturn(Mono.empty());
@@ -131,7 +131,7 @@ class DiscordHouseholdTransportTest {
     void should_leave_the_footer_as_it_is_when_nobody_is_texted_or_the_read_fails() {
         final SmsRecipients sms = mock(SmsRecipients.class);
         when(smsRecipients.getIfAvailable()).thenReturn(sms);
-        when(sms.recipients()).thenReturn(Mono.just(List.of()), Mono.error(new IllegalStateException("presence-service answered 503")));
+        when(sms.of(any())).thenReturn(Mono.just(List.of()), Mono.error(new IllegalStateException("presence-service answered 503")));
         when(discordBotService.sendHouseholdMessage(any(), eq(MESSAGE))).thenReturn(Mono.empty());
 
         sut.deliver(NOTIFICATION, MESSAGE).as(StepVerifier::create).verifyComplete();

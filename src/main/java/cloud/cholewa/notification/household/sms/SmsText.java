@@ -23,6 +23,14 @@ final class SmsText {
     }
 
     /**
+     * A message whose sentence does not name its subject (HAS-472, a garage gate: "Otwarta od 15 min ...") - the title
+     * before it, {@code Brama garażowa Kate: Otwarta od 15 min ...}, so that the SMS says which gate.
+     */
+    static String titled(final HouseholdMessage message) {
+        return cut(message.title().strip() + ": " + message.text().strip(), CUT);
+    }
+
+    /**
      * The SMS of a marked alert or info (HAS-335): the level as the Discord embed titles it, then the message -
      * {@code ERROR: The grid is lost}. Only characters of the basic GSM alphabet are added - no brackets (an
      * escape each, two of 160) and the cut marked with three dots, not {@code …} (outside GSM, it would make the
