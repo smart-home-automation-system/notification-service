@@ -1,5 +1,7 @@
 package cloud.cholewa.notification.household.sms;
 
+import cloud.cholewa.home.model.HouseholdEvent;
+import cloud.cholewa.home.model.HouseholdNotification;
 import cloud.cholewa.notification.household.members.HouseholdRegistryClient;
 import cloud.cholewa.notification.household.members.HouseholdRegistryClient.Member;
 import cloud.cholewa.notification.household.members.PresentMembersClient;
@@ -7,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -54,12 +57,35 @@ class SmsRecipientsTest {
             return List.of("Ola");
         }));
         when(registry.members()).thenReturn(Mono.just(REGISTRY));
-        final SmsRecipients sut = new SmsRecipients(present, registry);
+        final SmsRecipients sut = new SmsRecipients(present, registry, List.of());
 
         sut.recipients().as(StepVerifier::create).expectNextCount(1).verifyComplete();
         sut.recipients().as(StepVerifier::create).expectNextCount(1).verifyComplete();
 
         assertThat(asked).hasValue(1);
+    }
+
+    // HAS-472: the alarm of a garage gate goes to the members named for it, at home or not, switched on with a phone -
+    // presence-service is not asked; every other message to who is at home
+    @Test
+    void should_text_a_garage_alarm_to_the_members_named_for_it_at_home_or_not() {
+        final PresentMembersClient present = mock(PresentMembersClient.class);
+        final HouseholdRegistryClient registry = mock(HouseholdRegistryClient.class);
+        when(present.present()).thenReturn(Mono.just(List.of("Ola")));
+        when(registry.members()).thenReturn(Mono.just(REGISTRY));
+        final SmsRecipients sut = new SmsRecipients(present, registry, List.of(" daleko", "EWA", "Bez", "Nieznany"));
+
+        sut.of(notification(HouseholdEvent.GARAGE_GATE_OPEN_COLD)).as(StepVerifier::create)
+            .assertNext(found -> assertThat(found).extracting(SmsRecipients.Recipient::name).containsExactly("Daleko"))
+            .verifyComplete();
+        sut.of(notification(HouseholdEvent.APPLIANCE_FINISHED)).as(StepVerifier::create)
+            .assertNext(found -> assertThat(found).extracting(SmsRecipients.Recipient::name).containsExactly("Ola"))
+            .verifyComplete();
+    }
+
+    private static HouseholdNotification notification(final HouseholdEvent event) {
+        return HouseholdNotification.builder().event(event).subject("Kate").deviceId(148L)
+            .occurredAt(LocalDateTime.of(2026, 11, 18, 19, 0)).reminder(0).build();
     }
 
     // never kept: the next message asks again
@@ -72,7 +98,7 @@ class SmsRecipientsTest {
             ? Mono.error(new IllegalStateException("presence-service answered 503"))
             : Mono.just(List.of("Ola"))));
         when(registry.members()).thenReturn(Mono.just(REGISTRY));
-        final SmsRecipients sut = new SmsRecipients(present, registry);
+        final SmsRecipients sut = new SmsRecipients(present, registry, List.of());
 
         sut.recipients().as(StepVerifier::create).expectErrorMessage("presence-service answered 503").verify();
         sut.recipients().as(StepVerifier::create)

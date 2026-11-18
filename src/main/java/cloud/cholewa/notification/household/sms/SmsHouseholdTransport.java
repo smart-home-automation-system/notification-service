@@ -21,6 +21,9 @@ import java.util.List;
  * <p>
  * The smog (HAS-430) is never texted - an event-level rule, not a setting (owner, 2026-11-12): Discord and Web Push
  * tell the household, an SMS costs and the smog is no emergency. Nor the doorbell and the gate (HAS-451).
+ * <p>
+ * Of a garage gate (HAS-472) only the first message of an alarm is texted, to the members named for it at home or
+ * not ({@link SmsRecipients#of}); the warning, a repeat and the end never ({@link HouseholdMessages#isTexted}).
  */
 @Slf4j
 class SmsHouseholdTransport implements HouseholdTransport {
@@ -38,20 +41,35 @@ class SmsHouseholdTransport implements HouseholdTransport {
         return "sms";
     }
 
-    //the dispatcher hands it no smog and no event of the intercom (HAS-451), and says so in the log
+    //the dispatcher hands it no smog, no event of the intercom (HAS-451) and of a garage gate only the first message
+    //of an alarm (HAS-472), and says so in the log
     @Override
     public boolean carries(final HouseholdNotification notification) {
-        return !HouseholdMessages.isSmog(notification) && !HouseholdMessages.isIntercom(notification);
+        return HouseholdMessages.isTexted(notification);
     }
 
     @Override
     public Mono<Void> deliver(final HouseholdNotification notification, final HouseholdMessage message) {
-        return recipients.recipients()
+        return recipients.of(notification)
             .filter(found -> !found.isEmpty())
-            .switchIfEmpty(Mono.fromRunnable(() -> log.info(
-                "Nobody of the household with a phone is at home: no SMS for [{}] of [{}]",
-                notification.getEvent(), notification.getSubject())))
-            .flatMap(found -> send(found, SmsText.of(message), notification));
+            .switchIfEmpty(Mono.fromRunnable(() -> nobodyToText(notification)))
+            .flatMap(found -> send(found, textOf(notification, message), notification));
+    }
+
+    //the sentence of a garage gate does not name the gate: its title goes before it
+    private static String textOf(final HouseholdNotification notification, final HouseholdMessage message) {
+        return HouseholdMessages.isGarageGate(notification) ? SmsText.titled(message) : SmsText.of(message);
+    }
+
+    //nobody at home is no failure; nobody of the members named for a garage alarm is a setting to fix
+    private static void nobodyToText(final HouseholdNotification notification) {
+        if (HouseholdMessages.isGarageAlarm(notification)) {
+            log.warn("None of household.garage.sms-members is switched on with a phone: no SMS for [{}] of [{}]",
+                notification.getEvent(), notification.getSubject());
+            return;
+        }
+        log.info("Nobody of the household with a phone is at home: no SMS for [{}] of [{}]",
+            notification.getEvent(), notification.getSubject());
     }
 
     private Mono<Void> send(

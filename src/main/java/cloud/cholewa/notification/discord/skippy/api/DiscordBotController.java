@@ -43,6 +43,7 @@ public class DiscordBotController {
 
     static final String SMOG_SAMPLE = "smog";
     static final String DOORBELL_SAMPLE = "doorbell";
+    static final String GARAGE_SAMPLE = "garage";
 
     private final DiscordBotService service;
     private final ObjectProvider<SmsSmoke> smsSmoke;
@@ -111,8 +112,23 @@ public class DiscordBotController {
         return switch (event) {
             case SMOG_SAMPLE -> smogSample(subject);
             case DOORBELL_SAMPLE -> doorbellSample(subject);
+            case GARAGE_SAMPLE -> garageSample(subject);
             default -> testNotification(event, subject, reminder, member);
         };
+    }
+
+    //a sample cold alarm of a garage gate (HAS-472): open for 15 minutes below 15 C outside
+    private static HouseholdNotification garageSample(final String subject) {
+        final LocalDateTime now = LocalDateTime.now(ZoneId.systemDefault());
+        return HouseholdNotification.builder()
+            .event(HouseholdEvent.GARAGE_GATE_OPEN_COLD)
+            .subject(subject == null ? "Test" : subject)
+            .deviceId(1L)
+            .occurredAt(now)
+            .reminder(0)
+            .openSince(now.minusMinutes(15))
+            .temperature(7.5)
+            .build();
     }
 
     //a sample smog warning of the air quality sensor - bad, not very bad

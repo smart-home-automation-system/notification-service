@@ -34,6 +34,9 @@ final class PushPayload {
             case SMOG_WARNING, SMOG_OVER -> "smog-";
             case DOORBELL_RINGING -> "doorbell-";
             case GATE_OPENED -> "gate-";
+            //a repeat of an alarm or the warning of the same garage gate replaces the one before it (HAS-472)
+            case GARAGE_GATE_OPEN_COLD, GARAGE_GATE_OPEN_EMPTY_HOUSE, GARAGE_GATE_OPEN_LONG, GARAGE_GATE_CLOSED ->
+                "garage-gate-";
             case APPLIANCE_FINISHED, APPLIANCE_REMINDER, APPLIANCE_ACKNOWLEDGED -> "appliance-";
         };
         return kind + notification.getDeviceId();

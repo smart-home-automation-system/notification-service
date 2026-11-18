@@ -135,6 +135,24 @@ class DiscordBotControllerSmsTest {
         verifyNoInteractions(smsSmoke);
     }
 
+    //HAS-472: event=garage is a sample cold alarm of a garage gate on the intercom channel - Discord only, so with
+    //sms=true it is refused like every intercom event
+    @Test
+    void should_post_a_garage_sample_and_never_text_it() {
+        when(discordBotService.sendHouseholdMessage(any(), any())).thenReturn(Mono.empty());
+
+        webTestClient.get().uri("/skippy?category=household&event=garage").exchange().expectStatus().isOk();
+        webTestClient.get().uri("/skippy?category=household&event=garage&sms=true").exchange().expectStatus().isBadRequest();
+
+        final ArgumentCaptor<HouseholdNotification> event = ArgumentCaptor.forClass(HouseholdNotification.class);
+        final ArgumentCaptor<HouseholdMessage> posted = ArgumentCaptor.forClass(HouseholdMessage.class);
+        verify(discordBotService).sendHouseholdMessage(event.capture(), posted.capture());
+        assertThat(event.getValue().getEvent()).isEqualTo(HouseholdEvent.GARAGE_GATE_OPEN_COLD);
+        assertThat(posted.getValue().title()).isEqualTo("Brama garażowa Test");
+        assertThat(posted.getValue().text()).isEqualTo("Otwarta od 15 min, a na zewnątrz 7,5 °C - zamknij ją.");
+        verifyNoInteractions(smsSmoke);
+    }
+
     // an SMS costs and reaches a phone: never without sms=true
     @Test
     void should_text_nobody_without_sms_true() {
