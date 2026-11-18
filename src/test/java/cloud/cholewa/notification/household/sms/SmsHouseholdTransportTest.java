@@ -60,6 +60,17 @@ class SmsHouseholdTransportTest {
         assertThat(sut.carries(smog)).isFalse();
         assertThat(sut.carries(smog.event(HouseholdEvent.SMOG_OVER))).isFalse();
         assertThat(sut.carries(FINISHED)).isTrue();
+    }
+
+    //HAS-451: nor the doorbell and the gate
+    @Test
+    void should_never_carry_the_intercom() {
+        final HouseholdNotification ring = HouseholdNotification.builder()
+            .event(HouseholdEvent.DOORBELL_RINGING).subject("Intercom").deviceId(146L)
+            .occurredAt(LocalDateTime.of(2026, 11, 18, 8, 22)).reminder(0).build();
+
+        assertThat(sut.carries(ring)).isFalse();
+        assertThat(sut.carries(ring.event(HouseholdEvent.GATE_OPENED))).isFalse();
         verifyNoInteractions(recipients, client);
     }
 

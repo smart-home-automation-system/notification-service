@@ -1,5 +1,7 @@
 package cloud.cholewa.notification.discord.skippy.service;
 
+import cloud.cholewa.home.model.HouseholdEvent;
+import cloud.cholewa.home.model.HouseholdNotification;
 import cloud.cholewa.notification.discord.skippy.config.DiscordBotConfig;
 import cloud.cholewa.notification.household.HouseholdMessage;
 import cloud.cholewa.notification.model.NotificationLevel;
@@ -24,6 +26,8 @@ import reactor.core.Exceptions;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.LocalDateTime;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -38,6 +42,10 @@ class DiscordBotServiceTest {
     private static final String MESSAGE = "test message";
     private static final String CHANNEL_ID = "1466923100024344650";
     private static final String HOUSEHOLD_CHANNEL_ID = "1563484304913203332";
+    private static final String INTERCOM_CHANNEL_ID = "1563484304913209999";
+    private static final HouseholdNotification FINISHED = HouseholdNotification.builder()
+        .event(HouseholdEvent.APPLIANCE_FINISHED).subject("Zmywarka").deviceId(64L)
+        .occurredAt(LocalDateTime.of(2026, 10, 24, 19, 40)).reminder(0).build();
 
     @Mock
     private DiscordClient skippy;
@@ -52,7 +60,8 @@ class DiscordBotServiceTest {
 
     @BeforeEach
     void setUp() {
-        discordBotService = new DiscordBotService(skippy, new DiscordBotConfig("token", CHANNEL_ID, HOUSEHOLD_CHANNEL_ID));
+        discordBotService = new DiscordBotService(skippy, new DiscordBotConfig("token", CHANNEL_ID, HOUSEHOLD_CHANNEL_ID,
+            INTERCOM_CHANNEL_ID));
     }
 
     @Test
@@ -186,7 +195,7 @@ class DiscordBotServiceTest {
 
     @Test
     void should_refuse_channel_id_that_is_not_a_number() {
-        final DiscordBotConfig config = new DiscordBotConfig("token", "alerts", HOUSEHOLD_CHANNEL_ID);
+        final DiscordBotConfig config = new DiscordBotConfig("token", "alerts", HOUSEHOLD_CHANNEL_ID, INTERCOM_CHANNEL_ID);
 
         assertThatThrownBy(() -> new DiscordBotService(skippy, config))
             .isInstanceOf(NumberFormatException.class);
@@ -199,7 +208,7 @@ class DiscordBotServiceTest {
         when(skippy.getChannelById(Snowflake.of(HOUSEHOLD_CHANNEL_ID))).thenReturn(restChannel);
         when(restChannel.createMessage(any(MessageCreateRequest.class))).thenReturn(Mono.just(mock(MessageData.class)));
 
-        discordBotService.sendHouseholdMessage(new HouseholdMessage(
+        discordBotService.sendHouseholdMessage(FINISHED, new HouseholdMessage(
                 "Zmywarka", "Zmywarka skończyła pracę - czas ją opróżnić.", "24.10.2026 19:40", 0xF39C12))
             .as(StepVerifier::create)
             .verifyComplete();
@@ -213,20 +222,39 @@ class DiscordBotServiceTest {
         verify(skippy, never()).getChannelById(Snowflake.of(CHANNEL_ID));
     }
 
+    //HAS-451: the doorbell and the gate on the intercom channel - never the household one, never the alerts
+    @Test
+    void should_send_the_intercom_to_the_intercom_channel() {
+        when(skippy.getChannelById(Snowflake.of(INTERCOM_CHANNEL_ID))).thenReturn(restChannel);
+        when(restChannel.createMessage(any(MessageCreateRequest.class))).thenReturn(Mono.just(mock(MessageData.class)));
+        final HouseholdNotification ring = HouseholdNotification.builder()
+            .event(HouseholdEvent.DOORBELL_RINGING).subject("Intercom").deviceId(146L)
+            .occurredAt(LocalDateTime.of(2026, 11, 18, 8, 22)).reminder(0).build();
+
+        discordBotService.sendHouseholdMessage(ring, new HouseholdMessage("Domofon", "Ktoś dzwoni do bramy.",
+                "18.11.2026 08:22", 0x3498DB))
+            .as(StepVerifier::create)
+            .verifyComplete();
+
+        assertThat(sentRequest().embeds().get().getFirst().title().get()).isEqualTo("Domofon");
+        verify(skippy, never()).getChannelById(Snowflake.of(HOUSEHOLD_CHANNEL_ID));
+        verify(skippy, never()).getChannelById(Snowflake.of(CHANNEL_ID));
+    }
+
     @Test
     void should_signal_a_refusal_of_a_household_message() {
         final ClientException forbidden = mock(ClientException.class);
         when(skippy.getChannelById(Snowflake.of(HOUSEHOLD_CHANNEL_ID))).thenReturn(restChannel);
         when(restChannel.createMessage(any(MessageCreateRequest.class))).thenReturn(Mono.error(forbidden));
 
-        discordBotService.sendHouseholdMessage(new HouseholdMessage("Zmywarka", "text", "24.10.2026 19:40", 1))
+        discordBotService.sendHouseholdMessage(FINISHED, new HouseholdMessage("Zmywarka", "text", "24.10.2026 19:40", 1))
             .as(StepVerifier::create)
             .verifyErrorMatches(forbidden::equals);
     }
 
     @Test
     void should_refuse_a_household_channel_id_that_is_not_a_number() {
-        final DiscordBotConfig config = new DiscordBotConfig("token", CHANNEL_ID, "household");
+        final DiscordBotConfig config = new DiscordBotConfig("token", CHANNEL_ID, "household", INTERCOM_CHANNEL_ID);
 
         assertThatThrownBy(() -> new DiscordBotService(skippy, config))
             .isInstanceOf(NumberFormatException.class);

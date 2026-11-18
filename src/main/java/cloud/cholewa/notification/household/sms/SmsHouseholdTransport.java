@@ -20,7 +20,7 @@ import java.util.List;
  * has a handful of members.
  * <p>
  * The smog (HAS-430) is never texted - an event-level rule, not a setting (owner, 2026-11-12): Discord and Web Push
- * tell the household, an SMS costs and the smog is no emergency.
+ * tell the household, an SMS costs and the smog is no emergency. Nor the doorbell and the gate (HAS-451).
  */
 @Slf4j
 class SmsHouseholdTransport implements HouseholdTransport {
@@ -38,10 +38,10 @@ class SmsHouseholdTransport implements HouseholdTransport {
         return "sms";
     }
 
-    //the dispatcher hands it no smog, and says so in the log
+    //the dispatcher hands it no smog and no event of the intercom (HAS-451), and says so in the log
     @Override
     public boolean carries(final HouseholdNotification notification) {
-        return !HouseholdMessages.isSmog(notification);
+        return !HouseholdMessages.isSmog(notification) && !HouseholdMessages.isIntercom(notification);
     }
 
     @Override

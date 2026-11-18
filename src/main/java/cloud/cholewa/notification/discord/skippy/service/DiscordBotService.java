@@ -1,7 +1,9 @@
 package cloud.cholewa.notification.discord.skippy.service;
 
 import cloud.cholewa.notification.discord.skippy.config.DiscordBotConfig;
+import cloud.cholewa.home.model.HouseholdNotification;
 import cloud.cholewa.notification.household.HouseholdMessage;
+import cloud.cholewa.notification.household.HouseholdMessages;
 import cloud.cholewa.notification.model.NotificationLevel;
 import discord4j.common.util.Snowflake;
 import discord4j.core.DiscordClient;
@@ -30,11 +32,13 @@ public class DiscordBotService {
     private final DiscordClient skippy;
     private final Snowflake alertsChannelId;
     private final Snowflake householdChannelId;
+    private final Snowflake intercomChannelId;
 
     public DiscordBotService(final DiscordClient skippy, final DiscordBotConfig config) {
         this.skippy = skippy;
         this.alertsChannelId = Snowflake.of(config.getAlertsChannelId());
         this.householdChannelId = Snowflake.of(config.getHouseholdChannelId());
+        this.intercomChannelId = Snowflake.of(config.getIntercomChannelId());
     }
 
     //straight to the configured channel, over the REST API only. Not by login(): that opens a
@@ -45,10 +49,12 @@ public class DiscordBotService {
         return post(alertsChannelId, level.name(), () -> toRequest(level, message));
     }
 
-    //the household channel (HAS-274): the device as the title, the Polish text inside, the time of
-    //the house in the footer, the bar colored by the event
-    public Mono<Void> sendHouseholdMessage(final HouseholdMessage message) {
-        return post(householdChannelId, "Household", () -> toRequest(message));
+    //the household channel (HAS-274): the device as the title, the Polish text inside, the time of the house in the
+    //footer, the bar colored by the event - the doorbell and the gate (HAS-451) the same on the intercom channel
+    public Mono<Void> sendHouseholdMessage(final HouseholdNotification notification, final HouseholdMessage message) {
+        final boolean intercom = HouseholdMessages.isIntercom(notification);
+        return post(intercom ? intercomChannelId : householdChannelId, intercom ? "Intercom" : "Household",
+            () -> toRequest(message));
     }
 
     private Mono<Void> post(final Snowflake channel, final String what, final Supplier<MessageCreateRequest> request) {

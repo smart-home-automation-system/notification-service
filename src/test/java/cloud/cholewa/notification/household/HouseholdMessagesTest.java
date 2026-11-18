@@ -1,5 +1,6 @@
 package cloud.cholewa.notification.household;
 
+import cloud.cholewa.home.model.GateOpenSource;
 import cloud.cholewa.home.model.HouseholdEvent;
 import cloud.cholewa.home.model.HouseholdNotification;
 import org.junit.jupiter.api.Test;
@@ -96,9 +97,10 @@ class HouseholdMessagesTest {
             .isEqualTo("Coffee machine - potwierdzone, dziękujemy.");
     }
 
-    //every event of an appliance has words, a title and a footer - the smog has its own tests above (HAS-430)
+    //every event of an appliance has words, a title and a footer - the smog (HAS-430) and the intercom (HAS-451) have
+    //their own tests
     @ParameterizedTest
-    @EnumSource(value = HouseholdEvent.class, names = {"SMOG_WARNING", "SMOG_OVER"}, mode = EnumSource.Mode.EXCLUDE)
+    @EnumSource(value = HouseholdEvent.class, names = {"SMOG_WARNING", "SMOG_OVER", "DOORBELL_RINGING", "GATE_OPENED"}, mode = EnumSource.Mode.EXCLUDE)
     void should_word_every_event(final HouseholdEvent event) {
         final HouseholdMessage message = HouseholdMessages.of(notification("Dishwasher", event, 1));
 
@@ -109,7 +111,7 @@ class HouseholdMessagesTest {
 
     //and the same for a device without a Polish name
     @ParameterizedTest
-    @EnumSource(value = HouseholdEvent.class, names = {"SMOG_WARNING", "SMOG_OVER"}, mode = EnumSource.Mode.EXCLUDE)
+    @EnumSource(value = HouseholdEvent.class, names = {"SMOG_WARNING", "SMOG_OVER", "DOORBELL_RINGING", "GATE_OPENED"}, mode = EnumSource.Mode.EXCLUDE)
     void should_word_every_event_of_another_device(final HouseholdEvent event) {
         final HouseholdMessage message = HouseholdMessages.of(notification("Coffee machine", event, 1));
 
@@ -171,6 +173,42 @@ class HouseholdMessagesTest {
         assertThat(HouseholdMessages.isSmog(smog(HouseholdEvent.SMOG_WARNING, 1, 1))).isTrue();
         assertThat(HouseholdMessages.isSmog(smog(HouseholdEvent.SMOG_OVER, 1, 1))).isTrue();
         assertThat(HouseholdMessages.isSmog(notification("Dryer", HouseholdEvent.APPLIANCE_FINISHED, 0))).isFalse();
+    }
+
+    //HAS-451: a ring at the gate, told by what it is - not by the registry name of the station
+    @Test
+    void should_word_a_ring_at_the_gate() {
+        final HouseholdMessage message = HouseholdMessages.of(notification("Intercom", HouseholdEvent.DOORBELL_RINGING, 0));
+
+        assertThat(message.title()).isEqualTo("Domofon");
+        assertThat(message.text()).isEqualTo("Ktoś dzwoni do bramy.");
+        assertThat(message.footer()).isEqualTo("24.10.2026 19:05");
+        assertThat(message.color()).isEqualTo(HouseholdMessages.DOORBELL_COLOR);
+    }
+
+    //an opening of the gate says where from: the screen, the application by a member, or nothing known
+    @Test
+    void should_word_an_opening_of_the_gate_by_where_it_came_from() {
+        final HouseholdNotification opened = notification("Gate", HouseholdEvent.GATE_OPENED, 0);
+
+        assertThat(HouseholdMessages.of(opened.source(GateOpenSource.SCREEN)).text())
+            .isEqualTo("Brama otwarta z ekranu domofonu.");
+        assertThat(HouseholdMessages.of(opened.source(GateOpenSource.DASHBOARD).member(" Anna ")).text())
+            .isEqualTo("Brama otwarta z aplikacji - otwiera Anna.");
+        assertThat(HouseholdMessages.of(opened.source(GateOpenSource.DASHBOARD).member(" ")).text())
+            .isEqualTo("Brama otwarta z aplikacji.");
+        assertThat(HouseholdMessages.of(opened.source(null).member(null)).text()).isEqualTo("Brama otwarta.");
+        assertThat(HouseholdMessages.of(opened).title()).isEqualTo("Brama");
+        assertThat(HouseholdMessages.of(opened).color()).isEqualTo(HouseholdMessages.GATE_OPENED_COLOR);
+    }
+
+    //the intercom is never texted and has a channel of its own - the rule the transports ask
+    @Test
+    void should_tell_the_intercom_apart_from_the_rest() {
+        assertThat(HouseholdMessages.isIntercom(notification("Intercom", HouseholdEvent.DOORBELL_RINGING, 0))).isTrue();
+        assertThat(HouseholdMessages.isIntercom(notification("Gate", HouseholdEvent.GATE_OPENED, 0))).isTrue();
+        assertThat(HouseholdMessages.isIntercom(smog(HouseholdEvent.SMOG_WARNING, 1, 1))).isFalse();
+        assertThat(HouseholdMessages.isIntercom(notification("Dryer", HouseholdEvent.APPLIANCE_FINISHED, 0))).isFalse();
     }
 
     private static HouseholdNotification smog(final HouseholdEvent event, final Integer pm10, final Integer pm25) {

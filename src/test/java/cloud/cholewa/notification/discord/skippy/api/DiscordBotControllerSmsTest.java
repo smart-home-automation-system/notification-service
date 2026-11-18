@@ -1,5 +1,7 @@
 package cloud.cholewa.notification.discord.skippy.api;
 
+import cloud.cholewa.home.model.HouseholdEvent;
+import cloud.cholewa.home.model.HouseholdNotification;
 import cloud.cholewa.notification.discord.skippy.service.DiscordBotService;
 import cloud.cholewa.notification.household.HouseholdMessage;
 import cloud.cholewa.notification.household.sms.MarkedNotificationSms;
@@ -87,7 +89,7 @@ class DiscordBotControllerSmsTest {
 
     @Test
     void should_text_the_administrators_the_words_posted_to_discord() {
-        when(discordBotService.sendHouseholdMessage(any())).thenReturn(Mono.empty());
+        when(discordBotService.sendHouseholdMessage(any(), any())).thenReturn(Mono.empty());
         when(smsSmoke.sendToAdministrators(any())).thenReturn(Mono.just(1L));
 
         webTestClient.get()
@@ -96,7 +98,7 @@ class DiscordBotControllerSmsTest {
             .expectStatus().isOk();
 
         final ArgumentCaptor<HouseholdMessage> posted = ArgumentCaptor.forClass(HouseholdMessage.class);
-        verify(discordBotService).sendHouseholdMessage(posted.capture());
+        verify(discordBotService).sendHouseholdMessage(any(), posted.capture());
         verify(smsSmoke).sendToAdministrators(posted.getValue());
         assertThat(posted.getValue().text()).isEqualTo("Zmywarka skończyła pracę - czas ją opróżnić.");
     }
@@ -104,22 +106,39 @@ class DiscordBotControllerSmsTest {
     //HAS-430: event=smog is a sample smog warning on Discord - never texted, so with sms=true it is refused
     @Test
     void should_post_a_smog_sample_and_never_text_it() {
-        when(discordBotService.sendHouseholdMessage(any())).thenReturn(Mono.empty());
+        when(discordBotService.sendHouseholdMessage(any(), any())).thenReturn(Mono.empty());
 
         webTestClient.get().uri("/skippy?category=household&event=smog").exchange().expectStatus().isOk();
         webTestClient.get().uri("/skippy?category=household&event=smog&sms=true").exchange().expectStatus().isBadRequest();
 
         final ArgumentCaptor<HouseholdMessage> posted = ArgumentCaptor.forClass(HouseholdMessage.class);
-        verify(discordBotService).sendHouseholdMessage(posted.capture());
+        verify(discordBotService).sendHouseholdMessage(any(), posted.capture());
         assertThat(posted.getValue().title()).isEqualTo("Air quality sensor");
         assertThat(posted.getValue().text()).startsWith("Smog na zewnątrz: PM10 112 µg/m³, PM2.5 78 µg/m³");
+        verifyNoInteractions(smsSmoke);
+    }
+
+    //HAS-451: event=doorbell is a sample ring on the intercom channel - never texted, so with sms=true it is refused
+    @Test
+    void should_post_a_doorbell_sample_and_never_text_it() {
+        when(discordBotService.sendHouseholdMessage(any(), any())).thenReturn(Mono.empty());
+
+        webTestClient.get().uri("/skippy?category=household&event=doorbell").exchange().expectStatus().isOk();
+        webTestClient.get().uri("/skippy?category=household&event=doorbell&sms=true").exchange().expectStatus().isBadRequest();
+        webTestClient.get().uri("/skippy?category=household&event=gate opened&sms=true").exchange().expectStatus().isBadRequest();
+
+        final ArgumentCaptor<HouseholdNotification> event = ArgumentCaptor.forClass(HouseholdNotification.class);
+        final ArgumentCaptor<HouseholdMessage> posted = ArgumentCaptor.forClass(HouseholdMessage.class);
+        verify(discordBotService).sendHouseholdMessage(event.capture(), posted.capture());
+        assertThat(event.getValue().getEvent()).isEqualTo(HouseholdEvent.DOORBELL_RINGING);
+        assertThat(posted.getValue().title()).isEqualTo("Domofon");
         verifyNoInteractions(smsSmoke);
     }
 
     // an SMS costs and reaches a phone: never without sms=true
     @Test
     void should_text_nobody_without_sms_true() {
-        when(discordBotService.sendHouseholdMessage(any())).thenReturn(Mono.empty());
+        when(discordBotService.sendHouseholdMessage(any(), any())).thenReturn(Mono.empty());
 
         webTestClient.get()
             .uri("/skippy?category=household")

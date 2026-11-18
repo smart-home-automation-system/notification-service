@@ -1,5 +1,6 @@
 package cloud.cholewa.notification.household.push;
 
+import cloud.cholewa.notification.household.members.HouseholdRegistryClient;
 import cloud.cholewa.notification.household.members.HouseholdServicesConfig;
 import cloud.cholewa.notification.household.members.PresentMembersClient;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -79,12 +80,13 @@ class WebPushConfig {
     @Bean
     WebPushHouseholdTransport webPushHouseholdTransport(
         final PresentMembersClient presentMembersClient,
+        final HouseholdRegistryClient householdRegistryClient,
         final PushSubscriptionsClient pushSubscriptionsClient,
         final WebPushSender webPushSender,
         final WebPushProperties properties,
         final JsonMapper jsonMapper
     ) {
-        return new WebPushHouseholdTransport(presentMembersClient, pushSubscriptionsClient, webPushSender,
+        return new WebPushHouseholdTransport(presentMembersClient, householdRegistryClient, pushSubscriptionsClient, webPushSender,
             properties.allowedHosts(), jsonMapper);
     }
 

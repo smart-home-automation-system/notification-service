@@ -1,5 +1,6 @@
 package cloud.cholewa.notification.household;
 
+import cloud.cholewa.home.model.GateOpenSource;
 import cloud.cholewa.home.model.HouseholdEvent;
 import cloud.cholewa.home.model.HouseholdNotification;
 import lombok.AccessLevel;
@@ -26,6 +27,10 @@ import java.util.Optional;
  * air quality sensor, the particles the reading of the event. The words say how bad it is by the thresholds of the
  * GIOS index - the payload carries the values only: above {@link #PM10_VERY_BAD} of PM10 or {@link #PM25_VERY_BAD}
  * of PM2.5 "bardzo zły" in red, otherwise "zły" in amber. A message without the numbers is still worded.
+ *
+ * <p>The intercom (HAS-451, smart-home-sdk 1.22.0, published by gate-service): a ring at the gate and an opening of
+ * the gate, told by what they are - "Domofon", "Brama" - not by the registry names of the station and the Shelly.
+ * An opening says where it came from: the indoor screen, or the application by the member it names.
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class HouseholdMessages {
@@ -37,6 +42,11 @@ public final class HouseholdMessages {
     //the smog: bad in amber, very bad in red; over in the colour of the acknowledgement
     static final int SMOG_BAD_COLOR = 0xF39C12;
     static final int SMOG_VERY_BAD_COLOR = 0xE74C3C;
+    //the intercom: a ring asks somebody to come, an opening is what happened
+    static final int DOORBELL_COLOR = 0x3498DB;
+    static final int GATE_OPENED_COLOR = 0x2ECC71;
+    static final String DOORBELL_TITLE = "Domofon";
+    static final String GATE_TITLE = "Brama";
 
     //the GIOS index: above these (ug/m3) the air is very bad (level 6)
     static final int PM10_VERY_BAD = 150;
@@ -54,6 +64,9 @@ public final class HouseholdMessages {
         final String footer = notification.getOccurredAt().format(TIME_OF_THE_HOUSE);
         if (isSmog(notification)) {
             return smog(notification, footer);
+        }
+        if (isIntercom(notification)) {
+            return intercom(notification, footer);
         }
         return polishNameOf(notification.getSubject())
             .map(name -> named(notification, name, footer))
@@ -81,6 +94,7 @@ public final class HouseholdMessages {
                 name, acknowledgedBy(notification, name + " opróżniona")
                     .orElse(name + " opróżniona - dziękujemy!"), footer, ACKNOWLEDGED_COLOR);
             case SMOG_WARNING, SMOG_OVER -> smog(notification, footer);
+            case DOORBELL_RINGING, GATE_OPENED -> intercom(notification, footer);
         };
     }
 
@@ -133,6 +147,35 @@ public final class HouseholdMessages {
                 subject, acknowledgedBy(notification, subject)
                     .orElse(subject + " - potwierdzone, dziękujemy."), footer, ACKNOWLEDGED_COLOR);
             case SMOG_WARNING, SMOG_OVER -> smog(notification, footer);
+            case DOORBELL_RINGING, GATE_OPENED -> intercom(notification, footer);
         };
+    }
+
+    //the events of the intercom (HAS-451) - on a Discord channel of their own, never texted
+    public static boolean isIntercom(final HouseholdNotification notification) {
+        return notification.getEvent() == HouseholdEvent.DOORBELL_RINGING
+            || notification.getEvent() == HouseholdEvent.GATE_OPENED;
+    }
+
+    private static HouseholdMessage intercom(final HouseholdNotification notification, final String footer) {
+        if (notification.getEvent() == HouseholdEvent.DOORBELL_RINGING) {
+            return new HouseholdMessage(DOORBELL_TITLE, "Ktoś dzwoni do bramy.", footer, DOORBELL_COLOR);
+        }
+        return new HouseholdMessage(GATE_TITLE, gateOpened(notification), footer, GATE_OPENED_COLOR);
+    }
+
+    //from the screen, from the application by a member (the name after the verb, no case), or from where not known
+    private static String gateOpened(final HouseholdNotification notification) {
+        final Optional<String> member = Optional.ofNullable(notification.getMember())
+            .map(String::strip)
+            .filter(name -> !name.isEmpty());
+        if (notification.getSource() == GateOpenSource.SCREEN) {
+            return "Brama otwarta z ekranu domofonu.";
+        }
+        if (notification.getSource() == GateOpenSource.DASHBOARD) {
+            return member.map(name -> "Brama otwarta z aplikacji - otwiera " + name + ".")
+                .orElse("Brama otwarta z aplikacji.");
+        }
+        return "Brama otwarta.";
     }
 }
