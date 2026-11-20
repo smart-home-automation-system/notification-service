@@ -6,6 +6,7 @@ import cloud.cholewa.home.model.HouseholdEvent;
 import cloud.cholewa.home.model.HouseholdNotification;
 import cloud.cholewa.home.model.PushSubscription;
 import cloud.cholewa.home.model.PushSubscriptionKeys;
+import cloud.cholewa.home.model.RoomName;
 import cloud.cholewa.notification.household.HouseholdMessage;
 import cloud.cholewa.notification.household.HouseholdMessages;
 import org.junit.jupiter.api.BeforeEach;
@@ -126,6 +127,40 @@ class WebPushHouseholdTransportTest {
         assertThat(shown.get("renotify").asBoolean()).isTrue();
         assertThat(shown.get("data").get("path").asString()).isEqualTo("/gate");
         verifyNoInteractions(presentMembers);
+    }
+
+    //HAS-462: a fire alarm reaches every switched-on member, at home or not, sounds and stays on the screen; its end
+    //replaces it on the same tag, silently
+    @Test
+    void should_push_a_fire_alarm_and_its_end_to_every_switched_on_member() {
+        final HouseholdNotification alarm = fire(HouseholdEvent.FIRE_ALARM);
+        final HouseholdNotification over = fire(HouseholdEvent.FIRE_ALARM_OVER);
+        when(registry.members()).thenReturn(Mono.just(List.of(
+            new HouseholdRegistryClient.Member("Ola", null, true, "resident"),
+            new HouseholdRegistryClient.Member("Jan", null, false, "admin"))));
+        when(subscriptions.ofMembers(List.of("Ola"))).thenReturn(Mono.just(List.of(subscription(APPLE))));
+        when(sender.send(any(), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.DELIVERED));
+
+        sut.deliver(alarm, HouseholdMessages.of(alarm)).as(StepVerifier::create).verifyComplete();
+        sut.deliver(over, HouseholdMessages.of(over)).as(StepVerifier::create).verifyComplete();
+
+        final ArgumentCaptor<byte[]> payload = ArgumentCaptor.forClass(byte[].class);
+        verify(sender, times(2)).send(any(), any(), payload.capture());
+        final JsonNode shownAlarm = jsonMapper.readTree(payload.getAllValues().get(0)).get("notification");
+        final JsonNode shownOver = jsonMapper.readTree(payload.getAllValues().get(1)).get("notification");
+        assertThat(shownAlarm.get("title").asString()).isEqualTo("Alarm pożarowy");
+        assertThat(shownAlarm.get("tag").asString()).isEqualTo("fire-151");
+        assertThat(shownAlarm.get("renotify").asBoolean()).isTrue();
+        assertThat(shownAlarm.get("requireInteraction").asBoolean()).isTrue();
+        assertThat(shownOver.get("tag").asString()).isEqualTo("fire-151");
+        assertThat(shownOver.get("renotify").asBoolean()).isFalse();
+        assertThat(sut.carries(over)).isTrue();
+        verifyNoInteractions(presentMembers);
+    }
+
+    private static HouseholdNotification fire(final HouseholdEvent event) {
+        return HouseholdNotification.builder().event(event).subject("Smoke detector").deviceId(151L)
+            .room(RoomName.KITCHEN).occurredAt(LocalDateTime.of(2026, 11, 20, 19, 15)).reminder(0).build();
     }
 
     //the opening of the gate and a garage gate closed are never pushed; every other event is

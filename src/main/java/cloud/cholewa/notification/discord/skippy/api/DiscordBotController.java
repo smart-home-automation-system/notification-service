@@ -2,6 +2,7 @@ package cloud.cholewa.notification.discord.skippy.api;
 
 import cloud.cholewa.home.model.HouseholdEvent;
 import cloud.cholewa.home.model.HouseholdNotification;
+import cloud.cholewa.home.model.RoomName;
 import cloud.cholewa.notification.discord.skippy.service.DiscordBotService;
 import cloud.cholewa.notification.household.HouseholdMessages;
 import cloud.cholewa.notification.household.sms.MarkedNotificationSms;
@@ -34,7 +35,9 @@ import java.time.ZoneId;
  * both mappings since HAS-335. {@code event=smog} (HAS-430) is a sample {@code smog warning} of the air quality
  * sensor with its particles - Discord only, never texted: with {@code sms=true} it is refused. {@code event=doorbell}
  * (HAS-451) is a sample {@code doorbell ringing} of the station at the gate, posted to the intercom channel - as is any
- * event of the intercom ({@code doorbell ringing}, {@code gate opened}); never texted either.
+ * event of the intercom ({@code doorbell ringing}, {@code gate opened}); never texted either. {@code event=fire alarm}
+ * and {@code event=fire alarm over} (HAS-462) are a sample alarm and its end of a smoke detector of the kitchen - with
+ * {@code sms=true} texted to the administrators alone, never to every member as the real alarm is.
  */
 @RestController
 @RequiredArgsConstructor
@@ -44,6 +47,9 @@ public class DiscordBotController {
     static final String SMOG_SAMPLE = "smog";
     static final String DOORBELL_SAMPLE = "doorbell";
     static final String GARAGE_SAMPLE = "garage";
+    //the values of the two events themselves: the sample gives them a detector and a room
+    static final String FIRE_SAMPLE = "fire alarm";
+    static final String FIRE_OVER_SAMPLE = "fire alarm over";
 
     private final DiscordBotService service;
     private final ObjectProvider<SmsSmoke> smsSmoke;
@@ -113,8 +119,22 @@ public class DiscordBotController {
             case SMOG_SAMPLE -> smogSample(subject);
             case DOORBELL_SAMPLE -> doorbellSample(subject);
             case GARAGE_SAMPLE -> garageSample(subject);
+            case FIRE_SAMPLE -> fireSample(HouseholdEvent.FIRE_ALARM, subject);
+            case FIRE_OVER_SAMPLE -> fireSample(HouseholdEvent.FIRE_ALARM_OVER, subject);
             default -> testNotification(event, subject, reminder, member);
         };
+    }
+
+    //a sample alarm, or its end, of a smoke detector of the kitchen (HAS-462)
+    private static HouseholdNotification fireSample(final HouseholdEvent event, final String subject) {
+        return HouseholdNotification.builder()
+            .event(event)
+            .subject(subject == null ? "Smoke detector" : subject)
+            .deviceId(1L)
+            .occurredAt(LocalDateTime.now(ZoneId.systemDefault()))
+            .reminder(0)
+            .room(RoomName.KITCHEN)
+            .build();
     }
 
     //a sample cold alarm of a garage gate (HAS-472): open for 15 minutes below 15 C outside

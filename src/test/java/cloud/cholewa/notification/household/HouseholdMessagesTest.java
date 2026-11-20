@@ -3,6 +3,7 @@ package cloud.cholewa.notification.household;
 import cloud.cholewa.home.model.GateOpenSource;
 import cloud.cholewa.home.model.HouseholdEvent;
 import cloud.cholewa.home.model.HouseholdNotification;
+import cloud.cholewa.home.model.RoomName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -101,7 +102,8 @@ class HouseholdMessagesTest {
     //their own tests
     @ParameterizedTest
     @EnumSource(value = HouseholdEvent.class, names = {"SMOG_WARNING", "SMOG_OVER", "DOORBELL_RINGING", "GATE_OPENED", "GARAGE_GATE_OPEN_COLD",
-        "GARAGE_GATE_OPEN_EMPTY_HOUSE", "GARAGE_GATE_OPEN_LONG", "GARAGE_GATE_CLOSED"}, mode = EnumSource.Mode.EXCLUDE)
+        "GARAGE_GATE_OPEN_EMPTY_HOUSE", "GARAGE_GATE_OPEN_LONG", "GARAGE_GATE_CLOSED", "FIRE_ALARM", "FIRE_ALARM_OVER"},
+        mode = EnumSource.Mode.EXCLUDE)
     void should_word_every_event(final HouseholdEvent event) {
         final HouseholdMessage message = HouseholdMessages.of(notification("Dishwasher", event, 1));
 
@@ -113,7 +115,8 @@ class HouseholdMessagesTest {
     //and the same for a device without a Polish name
     @ParameterizedTest
     @EnumSource(value = HouseholdEvent.class, names = {"SMOG_WARNING", "SMOG_OVER", "DOORBELL_RINGING", "GATE_OPENED", "GARAGE_GATE_OPEN_COLD",
-        "GARAGE_GATE_OPEN_EMPTY_HOUSE", "GARAGE_GATE_OPEN_LONG", "GARAGE_GATE_CLOSED"}, mode = EnumSource.Mode.EXCLUDE)
+        "GARAGE_GATE_OPEN_EMPTY_HOUSE", "GARAGE_GATE_OPEN_LONG", "GARAGE_GATE_CLOSED", "FIRE_ALARM", "FIRE_ALARM_OVER"},
+        mode = EnumSource.Mode.EXCLUDE)
     void should_word_every_event_of_another_device(final HouseholdEvent event) {
         final HouseholdMessage message = HouseholdMessages.of(notification("Coffee machine", event, 1));
 
@@ -279,6 +282,65 @@ class HouseholdMessagesTest {
         assertThat(HouseholdMessages.isTexted(notification("Intercom", HouseholdEvent.DOORBELL_RINGING, 0))).isFalse();
         assertThat(HouseholdMessages.isTexted(smog(HouseholdEvent.SMOG_WARNING, 1, 1))).isFalse();
         assertThat(HouseholdMessages.isTexted(notification("Dryer", HouseholdEvent.APPLIANCE_FINISHED, 0))).isTrue();
+    }
+
+    //HAS-462: a fire alarm - the detector in Polish, the room after a colon; the words are the owner's call on a real message
+    @Test
+    void should_word_a_fire_alarm_and_its_end() {
+        final HouseholdMessage alarm = HouseholdMessages.of(fire(HouseholdEvent.FIRE_ALARM, "Smoke detector", RoomName.KITCHEN));
+        final HouseholdMessage over = HouseholdMessages.of(fire(HouseholdEvent.FIRE_ALARM_OVER, "Smoke detector", RoomName.KITCHEN));
+
+        assertThat(alarm.title()).isEqualTo("Alarm pożarowy");
+        assertThat(alarm.text())
+            .isEqualTo("Czujka dymu w pomieszczeniu: kuchnia - alarm! Sprawdź natychmiast. Jeśli się pali, wyjdź z domu i dzwoń pod 112.");
+        assertThat(alarm.color()).isEqualTo(HouseholdMessages.FIRE_ALARM_COLOR);
+        assertThat(alarm.footer()).isEqualTo("24.10.2026 19:05");
+        assertThat(over.title()).isEqualTo("Koniec alarmu pożarowego");
+        assertThat(over.text()).isEqualTo("Czujka dymu w pomieszczeniu: kuchnia - alarm ustał.");
+        assertThat(over.color()).isEqualTo(HouseholdMessages.FIRE_ALARM_OVER_COLOR);
+    }
+
+    //the three kinds by their Polish names whatever the case, any other name as it comes, a missing room left out
+    @Test
+    void should_name_the_detector_and_leave_out_a_room_not_known() {
+        assertThat(HouseholdMessages.of(fire(HouseholdEvent.FIRE_ALARM_OVER, "CO detector", RoomName.BOILER)).text())
+            .isEqualTo("Czujka czadu w pomieszczeniu: kotłownia - alarm ustał.");
+        assertThat(HouseholdMessages.of(fire(HouseholdEvent.FIRE_ALARM_OVER, "heat detector", RoomName.SAUNA)).text())
+            .isEqualTo("Czujka temperatury w pomieszczeniu: sauna - alarm ustał.");
+        assertThat(HouseholdMessages.of(fire(HouseholdEvent.FIRE_ALARM_OVER, "Czujka w kuchni", RoomName.LIVIA)).text())
+            .isEqualTo("Czujka w kuchni w pomieszczeniu: pokój Livii - alarm ustał.");
+        assertThat(HouseholdMessages.of(fire(HouseholdEvent.FIRE_ALARM_OVER, "Smoke detector", null)).text())
+            .isEqualTo("Czujka dymu - alarm ustał.");
+    }
+
+    //every room has its Polish name, written out - a room added to the SDK stops the compiler in the switch
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+        "LOFT|strych", "WARDROBE|garderoba", "BEDROOM|sypialnia", "LIVIA|pokój Livii", "TOBI|pokój Tobiego",
+        "OFFICE|gabinet", "BATHROOM_UP|łazienka na piętrze", "HALL_UP|korytarz na piętrze", "STAIRS|schody",
+        "KITCHEN|kuchnia", "LIVING_ROOM|salon", "CINEMA|kino", "HALL_DOWN|korytarz na parterze",
+        "BATHROOM_DOWN|łazienka na parterze", "ENTRANCE|wiatrołap", "GARAGE|garaż", "BOILER|kotłownia", "GARDEN|ogród",
+        "SAUNA|sauna", "SANCTUM|sanktuarium"})
+    void should_name_every_room_in_polish(final RoomName room, final String polish) {
+        assertThat(HouseholdMessages.roomInPolish(room)).isEqualTo(polish);
+    }
+
+    @Test
+    void should_have_written_out_every_room() {
+        assertThat(RoomName.values()).hasSize(20);
+    }
+
+    //both events texted, on the household channel - not the intercom
+    @Test
+    void should_text_both_events_of_a_fire_alarm() {
+        assertThat(HouseholdMessages.isTexted(fire(HouseholdEvent.FIRE_ALARM, "Smoke detector", RoomName.KITCHEN))).isTrue();
+        assertThat(HouseholdMessages.isTexted(fire(HouseholdEvent.FIRE_ALARM_OVER, "Smoke detector", RoomName.KITCHEN))).isTrue();
+        assertThat(HouseholdMessages.isIntercom(fire(HouseholdEvent.FIRE_ALARM, "Smoke detector", RoomName.KITCHEN))).isFalse();
+        assertThat(HouseholdMessages.isFire(notification("Dryer", HouseholdEvent.APPLIANCE_FINISHED, 0))).isFalse();
+    }
+
+    private static HouseholdNotification fire(final HouseholdEvent event, final String detector, final RoomName room) {
+        return notification(detector, event, 0).room(room);
     }
 
     private static HouseholdNotification garage(final HouseholdEvent event, final int reminder, final int openMinutes) {

@@ -24,6 +24,8 @@ import java.util.List;
  * <p>
  * Of a garage gate (HAS-472) only the first message of an alarm is texted, to the members named for it at home or
  * not ({@link SmsRecipients#of}); the warning, a repeat and the end never ({@link HouseholdMessages#isTexted}).
+ * <p>
+ * Both events of a fire alarm (HAS-462) go to every member switched on with a phone, at home or not.
  */
 @Slf4j
 class SmsHouseholdTransport implements HouseholdTransport {
@@ -56,13 +58,21 @@ class SmsHouseholdTransport implements HouseholdTransport {
             .flatMap(found -> send(found, textOf(notification, message), notification));
     }
 
-    //the sentence of a garage gate does not name the gate: its title goes before it
+    //the sentence of a garage gate does not name the gate, nor that of a fire alarm the fire: its title goes before it
     private static String textOf(final HouseholdNotification notification, final HouseholdMessage message) {
-        return HouseholdMessages.isGarageGate(notification) ? SmsText.titled(message) : SmsText.of(message);
+        return HouseholdMessages.isGarageGate(notification) || HouseholdMessages.isFire(notification)
+            ? SmsText.titled(message)
+            : SmsText.of(message);
     }
 
-    //nobody at home is no failure; nobody of the members named for a garage alarm is a setting to fix
+    //nobody at home is no failure; nobody of the members named for a garage alarm, or nobody of the household with a
+    //phone for a fire alarm, is a setting to fix
     private static void nobodyToText(final HouseholdNotification notification) {
+        if (HouseholdMessages.isFire(notification)) {
+            log.warn("Nobody of the household is switched on with a phone: no SMS for [{}] of [{}]",
+                notification.getEvent(), notification.getSubject());
+            return;
+        }
         if (HouseholdMessages.isGarageAlarm(notification)) {
             log.warn("None of household.garage.sms-members is switched on with a phone: no SMS for [{}] of [{}]",
                 notification.getEvent(), notification.getSubject());

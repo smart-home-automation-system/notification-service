@@ -1,7 +1,7 @@
 # notification-service
 
 The way out of the system to a human: it takes notifications from RabbitMQ and posts them on
-Discord through a bot (`discord4j`). Reactive (WebFlux), Java 21, Spring Boot 4.1.2, Maven.
+Discord through a bot (`discord4j`). Reactive (WebFlux), Java 21, Spring Boot 4.1.3, Maven.
 Docker image `magikabdul/notification-service`; the pom keeps `0.0.1-SNAPSHOT`, the released
 version comes from the git tag.
 
@@ -38,7 +38,7 @@ review.
   household test message to the household channel (Discord only; with `sms=true` also an SMS to the
   administrators, HAS-275; on the alert call too since HAS-335). It is deliberately **not**
   routed by `api-gateway-service`.
-- Uses libraries: `smart-home-sdk` 1.23.0 (a garage gate left open, `openSince` / `temperature` - HAS-472; 1.22.0, the doorbell and the gate, `source` - HAS-451; the household models, since HAS-274; `member` since HAS-347; 1.15.0 since HAS-335; `MemberRequest` of 1.17.0 since HAS-410; its marks of 1.19.0 since HAS-416; the smog events and `pm10` / `pm25` of 1.21.0 since HAS-430) and
+- Uses libraries: `smart-home-sdk` 1.24.0 (a fire alarm and its `room` - HAS-462; 1.23.0, a garage gate left open, `openSince` / `temperature` - HAS-472; 1.22.0, the doorbell and the gate, `source` - HAS-451; the household models, since HAS-274; `member` since HAS-347; 1.15.0 since HAS-335; `MemberRequest` of 1.17.0 since HAS-410; its marks of 1.19.0 since HAS-416; the smog events and `pm10` / `pm25` of 1.21.0 since HAS-430) and
   `cholewa-commons` (1.14.0 since HAS-430; 1.13.0 since HAS-335; 1.12.0 since HAS-276; 1.11.0 since HAS-274). The `WebClient`s of the push
   transport are built from the injected builder, so the Logbook filter of the library logs them
   with the `traceId` - there is no own `LogbookClientHandler`, and none may be added (every call
@@ -197,6 +197,19 @@ review.
     before. None of them switched on with a phone is a WARN. **Push**: the three open events to every switched-on member
     at home or not (`toEverybody`, the rule of the ring), `garage gate closed` never; tag `garage-gate-<deviceId>`.
     Smoke test `event=garage` (Discord only).
+  - **A fire alarm** (HAS-462, `fire alarm` / `fire alarm over` of smart-home-sdk 1.24.0, published by safety-service -
+    HAS-461): on the household channel, title `Alarm pożarowy` / `Koniec alarmu pożarowego`; the detector by its Polish
+    name (`DETECTOR_NAMES`: the three kinds of the registry, `Smoke detector` - `Czujka dymu`; any other name as it comes)
+    and the room of the payload after a colon (`roomInPolish` - the nominative, an exhaustive switch over `RoomName`, so a
+    room added to the SDK stops the compiler; `HouseholdMessagesTest` writes every name out), a missing room left out. The
+    words are the owner's call on a real message. **Both events go to everybody, at home or not**: `SmsRecipients.of` texts
+    every member switched on with a phone (the registry read for each message, never cached; nobody is a WARN), the SMS
+    puts the title first (`SmsText.titled` - with the Polish letters two Unicode parts a member), the Discord footer names
+    them; the push goes to every switched-on member (`toEverybody`), tag `fire-<deviceId>`, the end replaces the alarm
+    silently (`isQuiet`). **A room this version does not know is read as no room** (`HouseholdNotificationReader`, a
+    deserializer of `RoomName` on a copy of the mapper, a WARN): this service reads no registry, so it is not among the
+    services that move to a new SDK first, and a new room must never drop an alarm. Smoke test `event=fire alarm` /
+    `fire alarm over` (a smoke detector of the kitchen), with `sms=true` to the administrators alone.
   - **Every transport is tried, all at once, and a failed one fails nothing else**
     (`HouseholdDispatcher`, `flatMap`): logged at ERROR with the transport named. At once and not
     in series: Discord retrying for over a minute must not hold back the SMS and the push. The

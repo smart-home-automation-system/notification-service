@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class SmsRecipientsTest {
@@ -81,6 +82,25 @@ class SmsRecipientsTest {
         sut.of(notification(HouseholdEvent.APPLIANCE_FINISHED)).as(StepVerifier::create)
             .assertNext(found -> assertThat(found).extracting(SmsRecipients.Recipient::name).containsExactly("Ola"))
             .verifyComplete();
+    }
+
+    // HAS-462: a fire alarm goes to every member switched on with a phone, at home or not - presence-service is not
+    // asked, and the alarm is never answered from the cached list of who is at home
+    @Test
+    void should_text_a_fire_alarm_to_every_member_with_a_phone_at_home_or_not() {
+        final PresentMembersClient present = mock(PresentMembersClient.class);
+        final HouseholdRegistryClient registry = mock(HouseholdRegistryClient.class);
+        when(registry.members()).thenReturn(Mono.just(REGISTRY));
+        final SmsRecipients sut = new SmsRecipients(present, registry, List.of("Daleko"));
+
+        sut.of(notification(HouseholdEvent.FIRE_ALARM)).as(StepVerifier::create)
+            .assertNext(found -> assertThat(found).extracting(SmsRecipients.Recipient::name)
+                .containsExactly("Ola", "Jan", "Daleko"))
+            .verifyComplete();
+        sut.of(notification(HouseholdEvent.FIRE_ALARM_OVER)).as(StepVerifier::create)
+            .assertNext(found -> assertThat(found).hasSize(3))
+            .verifyComplete();
+        verifyNoInteractions(present);
     }
 
     private static HouseholdNotification notification(final HouseholdEvent event) {

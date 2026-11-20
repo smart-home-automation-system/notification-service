@@ -2,6 +2,7 @@ package cloud.cholewa.notification.household.sms;
 
 import cloud.cholewa.home.model.HouseholdEvent;
 import cloud.cholewa.home.model.HouseholdNotification;
+import cloud.cholewa.home.model.RoomName;
 import cloud.cholewa.notification.household.HouseholdMessage;
 import cloud.cholewa.notification.household.HouseholdMessages;
 import org.junit.jupiter.api.Test;
@@ -90,6 +91,26 @@ class SmsHouseholdTransportTest {
         sut.deliver(cold, HouseholdMessages.of(cold)).as(StepVerifier::create).verifyComplete();
 
         verify(client).send("Jan", "+48500000002", "Brama garażowa Kate: Otwarta od 15 min, a na zewnątrz 7,5 °C - zamknij ją.");
+    }
+
+    //HAS-462: both events of a fire alarm are texted, the sentence names the detector and the room by itself
+    @Test
+    void should_text_both_events_of_a_fire_alarm() {
+        final HouseholdNotification alarm = HouseholdNotification.builder()
+            .event(HouseholdEvent.FIRE_ALARM).subject("Smoke detector").deviceId(151L).room(RoomName.KITCHEN)
+            .occurredAt(LocalDateTime.of(2026, 11, 20, 19, 15)).reminder(0).build();
+        when(recipients.of(alarm)).thenReturn(Mono.just(List.of(OLA, JAN)));
+        when(client.send(anyString(), anyString(), anyString())).thenReturn(Mono.just(true));
+
+        assertThat(sut.carries(alarm)).isTrue();
+        assertThat(sut.carries(HouseholdNotification.builder().event(HouseholdEvent.FIRE_ALARM_OVER).subject("Smoke detector")
+            .deviceId(151L).occurredAt(LocalDateTime.of(2026, 11, 20, 19, 20)).reminder(0).build())).isTrue();
+
+        sut.deliver(alarm, HouseholdMessages.of(alarm)).as(StepVerifier::create).verifyComplete();
+
+        final String text = "Alarm pożarowy: Czujka dymu w pomieszczeniu: kuchnia - alarm! Sprawdź natychmiast. Jeśli się pali, wyjdź z domu i dzwoń pod 112.";
+        verify(client).send("Ola", "+48500000001", text);
+        verify(client).send("Jan", "+48500000002", text);
     }
 
     private static HouseholdNotification garage(final HouseholdEvent event, final int reminder) {
