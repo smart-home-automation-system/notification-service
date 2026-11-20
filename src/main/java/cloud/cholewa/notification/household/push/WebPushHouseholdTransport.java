@@ -35,6 +35,9 @@ import java.util.List;
  * <p>
  * A garage gate left open (HAS-472) goes the same way, to every switched-on member at home or not - nobody at home is
  * one of its alarms; its end ({@code garage gate closed}) is never pushed.
+ * <p>
+ * Both events of a fire alarm (HAS-462) go to every switched-on member, at home or not - the end too, so that it
+ * replaces the alarm on the phones that showed it.
  */
 @Slf4j
 class WebPushHouseholdTransport implements HouseholdTransport {
@@ -91,7 +94,8 @@ class WebPushHouseholdTransport implements HouseholdTransport {
             .flatMap(found -> send(found, notification, message));
     }
 
-    //the doorbell and a garage gate left open: everybody switched on in the registry; every other event: who is at home
+    //the doorbell, a garage gate left open and a fire alarm: everybody switched on in the registry; every other event:
+    //who is at home
     private Mono<List<String>> recipientsOf(final HouseholdNotification notification) {
         return Mono.just(notification)
             .filter(WebPushHouseholdTransport::toEverybody)
@@ -104,7 +108,9 @@ class WebPushHouseholdTransport implements HouseholdTransport {
     }
 
     private static boolean toEverybody(final HouseholdNotification notification) {
-        return notification.getEvent() == HouseholdEvent.DOORBELL_RINGING || HouseholdMessages.isGarageGate(notification);
+        return notification.getEvent() == HouseholdEvent.DOORBELL_RINGING
+            || HouseholdMessages.isGarageGate(notification)
+            || HouseholdMessages.isFire(notification);
     }
 
     private Mono<Void> send(

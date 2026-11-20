@@ -38,6 +38,8 @@ final class PushPayload {
             case GARAGE_GATE_OPEN_COLD, GARAGE_GATE_OPEN_EMPTY_HOUSE, GARAGE_GATE_OPEN_LONG, GARAGE_GATE_CLOSED ->
                 "garage-gate-";
             case APPLIANCE_FINISHED, APPLIANCE_REMINDER, APPLIANCE_ACKNOWLEDGED -> "appliance-";
+            //the end of a fire alarm replaces the alarm of the same detector (HAS-462)
+            case FIRE_ALARM, FIRE_ALARM_OVER -> "fire-";
         };
         return kind + notification.getDeviceId();
     }
@@ -83,10 +85,11 @@ final class PushPayload {
         return jsonMapper.writeValueAsBytes(Map.of("notification", shown));
     }
 
-    //what nobody has to act on: the acknowledgement, and the end of the smog (HAS-430) - good news, it replaces the
-    //warning silently and goes by itself
+    //what nobody has to act on: the acknowledgement, and the end of the smog (HAS-430) or of a fire alarm (HAS-462) -
+    //good news, it replaces the warning silently and goes by itself
     private static boolean isQuiet(final HouseholdNotification notification) {
         return notification.getEvent() == HouseholdEvent.APPLIANCE_ACKNOWLEDGED
-            || notification.getEvent() == HouseholdEvent.SMOG_OVER;
+            || notification.getEvent() == HouseholdEvent.SMOG_OVER
+            || notification.getEvent() == HouseholdEvent.FIRE_ALARM_OVER;
     }
 }

@@ -3,6 +3,7 @@ package cloud.cholewa.notification.household;
 import cloud.cholewa.home.model.GateOpenSource;
 import cloud.cholewa.home.model.HouseholdEvent;
 import cloud.cholewa.home.model.HouseholdNotification;
+import cloud.cholewa.home.model.RoomName;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
@@ -38,6 +39,11 @@ import java.util.Optional;
  * intercom channel as "Brama garażowa" and the registry name of the gate ({@code Kate}), how long it stands open from
  * {@code openSince}, the temperature of the cold alarm, the number of a repeat. The two alarms (cold, empty house) in
  * red, the warning (open long) in amber, the end in green.
+ *
+ * <p>A fire alarm (HAS-462, smart-home-sdk 1.24.0, published by safety-service - HAS-461): the one message nobody may
+ * miss - texted to every member with a phone and pushed to every member, at home or not. Told by the detector (the
+ * three kinds of the registry by their Polish names, any other name as it comes) and the room of the payload in Polish
+ * after a colon - the nominative, no declension, no gender to agree with. The alarm in red, the end in green.
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class HouseholdMessages {
@@ -59,6 +65,11 @@ public final class HouseholdMessages {
     static final int GARAGE_WARNING_COLOR = 0xF39C12;
     static final int GARAGE_CLOSED_COLOR = 0x2ECC71;
     static final String GARAGE_TITLE = "Brama garażowa";
+    //a fire alarm (HAS-462): the alarm needs everybody now, the end is good news
+    static final int FIRE_ALARM_COLOR = 0xE74C3C;
+    static final int FIRE_ALARM_OVER_COLOR = 0x2ECC71;
+    static final String FIRE_ALARM_TITLE = "Alarm pożarowy";
+    static final String FIRE_ALARM_OVER_TITLE = "Koniec alarmu pożarowego";
     private static final Locale POLISH = Locale.forLanguageTag("pl");
     //the clock the publishers stamp occurredAt and openSince with
     private static final ZoneId HOUSE = ZoneId.of("Europe/Warsaw");
@@ -73,6 +84,12 @@ public final class HouseholdMessages {
         "dryer", "Suszarka",
         "dishwasher", "Zmywarka");
 
+    //the detectors of the registry are named by their kind in English (HAS-458: "Smoke detector")
+    private static final Map<String, String> DETECTOR_NAMES = Map.of(
+        "smoke detector", "Czujka dymu",
+        "co detector", "Czujka czadu",
+        "heat detector", "Czujka temperatury");
+
     private static final DateTimeFormatter TIME_OF_THE_HOUSE = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
 
     public static HouseholdMessage of(final HouseholdNotification notification) {
@@ -82,6 +99,9 @@ public final class HouseholdMessages {
         }
         if (isIntercom(notification)) {
             return intercom(notification, footer);
+        }
+        if (isFire(notification)) {
+            return fire(notification, footer);
         }
         return polishNameOf(notification.getSubject())
             .map(name -> named(notification, name, footer))
@@ -111,6 +131,7 @@ public final class HouseholdMessages {
             case SMOG_WARNING, SMOG_OVER -> smog(notification, footer);
             case DOORBELL_RINGING, GATE_OPENED, GARAGE_GATE_OPEN_COLD, GARAGE_GATE_OPEN_EMPTY_HOUSE, GARAGE_GATE_OPEN_LONG,
                  GARAGE_GATE_CLOSED -> intercom(notification, footer);
+            case FIRE_ALARM, FIRE_ALARM_OVER -> fire(notification, footer);
         };
     }
 
@@ -165,6 +186,7 @@ public final class HouseholdMessages {
             case SMOG_WARNING, SMOG_OVER -> smog(notification, footer);
             case DOORBELL_RINGING, GATE_OPENED, GARAGE_GATE_OPEN_COLD, GARAGE_GATE_OPEN_EMPTY_HOUSE, GARAGE_GATE_OPEN_LONG,
                  GARAGE_GATE_CLOSED -> intercom(notification, footer);
+            case FIRE_ALARM, FIRE_ALARM_OVER -> fire(notification, footer);
         };
     }
 
@@ -192,13 +214,64 @@ public final class HouseholdMessages {
     /**
      * Whether a message goes by SMS: never the smog (HAS-430) nor the doorbell and the gate (HAS-451); of a garage
      * gate only the first message of an alarm (HAS-472, owner 2026-11-18 - the warning, a repeat and the end never) -
-     * and that one to the members named for it, at home or not.
+     * and that one to the members named for it, at home or not. Both events of a fire alarm are texted, to every member
+     * with a phone at home or not (HAS-462).
      */
     public static boolean isTexted(final HouseholdNotification notification) {
         if (isGarageAlarm(notification)) {
             return Integer.valueOf(0).equals(notification.getReminder());
         }
         return !isSmog(notification) && !isIntercom(notification);
+    }
+
+    //the start and the end of an alarm of a fire detector (HAS-462)
+    public static boolean isFire(final HouseholdNotification notification) {
+        return notification.getEvent() == HouseholdEvent.FIRE_ALARM
+            || notification.getEvent() == HouseholdEvent.FIRE_ALARM_OVER;
+    }
+
+    //"Czujka dymu w pomieszczeniu: kuchnia - alarm!" - the room after a colon needs no case, the detector no gender
+    private static HouseholdMessage fire(final HouseholdNotification notification, final String footer) {
+        final String detector = Optional.ofNullable(notification.getSubject())
+            .map(String::strip)
+            .filter(name -> !name.isEmpty())
+            .map(name -> DETECTOR_NAMES.getOrDefault(name.toLowerCase(Locale.ROOT), name))
+            .orElse("Czujka");
+        final String where = Optional.ofNullable(notification.getRoom())
+            .map(room -> detector + " w pomieszczeniu: " + roomInPolish(room))
+            .orElse(detector);
+        if (notification.getEvent() == HouseholdEvent.FIRE_ALARM_OVER) {
+            return new HouseholdMessage(FIRE_ALARM_OVER_TITLE, where + " - alarm ustał.", footer, FIRE_ALARM_OVER_COLOR);
+        }
+        return new HouseholdMessage(FIRE_ALARM_TITLE,
+            where + " - alarm! Sprawdź natychmiast. Jeśli się pali, wyjdź z domu i dzwoń pod 112.", footer,
+            FIRE_ALARM_COLOR);
+    }
+
+    //the rooms of the house in Polish, the nominative: a room added to the SDK stops the compiler here
+    static String roomInPolish(final RoomName room) {
+        return switch (room) {
+            case LOFT -> "strych";
+            case WARDROBE -> "garderoba";
+            case BEDROOM -> "sypialnia";
+            case LIVIA -> "pokój Livii";
+            case TOBI -> "pokój Tobiego";
+            case OFFICE -> "gabinet";
+            case BATHROOM_UP -> "łazienka na piętrze";
+            case HALL_UP -> "korytarz na piętrze";
+            case STAIRS -> "schody";
+            case KITCHEN -> "kuchnia";
+            case LIVING_ROOM -> "salon";
+            case CINEMA -> "kino";
+            case HALL_DOWN -> "korytarz na parterze";
+            case BATHROOM_DOWN -> "łazienka na parterze";
+            case ENTRANCE -> "wiatrołap";
+            case GARAGE -> "garaż";
+            case BOILER -> "kotłownia";
+            case GARDEN -> "ogród";
+            case SAUNA -> "sauna";
+            case SANCTUM -> "sanktuarium";
+        };
     }
 
     private static HouseholdMessage intercom(final HouseholdNotification notification, final String footer) {

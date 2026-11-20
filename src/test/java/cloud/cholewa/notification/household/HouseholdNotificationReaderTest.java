@@ -2,6 +2,7 @@ package cloud.cholewa.notification.household;
 
 import cloud.cholewa.home.model.HouseholdEvent;
 import cloud.cholewa.home.model.HouseholdNotification;
+import cloud.cholewa.home.model.RoomName;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
@@ -55,9 +56,42 @@ class HouseholdNotificationReaderTest {
     void should_ignore_a_property_the_model_does_not_know() {
         final HouseholdNotification notification = reader.read("""
             {"event":"appliance finished","subject":"Pralka","deviceId":65,"occurredAt":"2026-10-24T08:00:00",
-             "reminder":0,"room":"bathroom"}""");
+             "reminder":0,"floor":"up"}""");
 
         assertThat(notification.getSubject()).isEqualTo("Pralka");
+    }
+
+    //HAS-462: the room of a fire alarm, the old spelling of hall up included
+    @Test
+    void should_read_the_room_of_a_fire_alarm() {
+        assertThat(reader.read(fire("kitchen")).getRoom()).isEqualTo(RoomName.KITCHEN);
+        assertThat(reader.read(fire("hall_up")).getRoom()).isEqualTo(RoomName.HALL_UP);
+    }
+
+    //a room a newer SDK added must not drop the alarm: it is read as no room
+    @Test
+    void should_read_a_room_this_version_does_not_know_as_no_room() {
+        final HouseholdNotification notification = reader.read(fire("pantry"));
+
+        assertThat(notification.getEvent()).isEqualTo(HouseholdEvent.FIRE_ALARM);
+        assertThat(notification.getRoom()).isNull();
+    }
+
+    //nor an object: skipped whole, the properties after it still read
+    @Test
+    void should_skip_a_room_that_is_not_a_text() {
+        final HouseholdNotification notification = reader.read("""
+            {"event":"fire alarm","room":{"name":"kitchen"},"subject":"Smoke detector","deviceId":151,
+             "occurredAt":"2026-11-20T19:15:00","reminder":0}""");
+
+        assertThat(notification.getRoom()).isNull();
+        assertThat(notification.getSubject()).isEqualTo("Smoke detector");
+    }
+
+    private static String fire(final String room) {
+        return """
+            {"event":"fire alarm","subject":"Smoke detector","deviceId":151,"occurredAt":"2026-11-20T19:15:00",
+             "reminder":0,"room":"%s"}""".formatted(room);
     }
 
     @ParameterizedTest

@@ -25,6 +25,9 @@ import java.util.stream.Collectors;
  * **The alarm of a garage gate goes to the members named for it** (HAS-472, {@code household.garage.sms-members}, owner
  * 2026-11-18: two of the household), at home or not, each switched on with a phone; the registry is read for each
  * such alarm - a rare message, never cached.
+ * <p>
+ * **A fire alarm goes to every member switched on with a phone** (HAS-462), at home or not - read the same way, for
+ * each message, never cached.
  */
 public class SmsRecipients {
 
@@ -50,12 +53,26 @@ public class SmsRecipients {
         return recipients;
     }
 
-    /** Who the SMS of this message goes to: the members named for a garage alarm, the members at home otherwise. */
+    /**
+     * Who the SMS of this message goes to: every member with a phone for a fire alarm, the members named for a garage
+     * alarm, the members at home otherwise.
+     */
     public Mono<List<Recipient>> of(final HouseholdNotification notification) {
         return Mono.just(notification)
-            .filter(HouseholdMessages::isGarageAlarm)
-            .flatMap(alarm -> registry.members().map(this::garageRecipientsOf))
+            .filter(HouseholdMessages::isFire)
+            .flatMap(fire -> registry.members().map(SmsRecipients::everybodyOf))
+            .switchIfEmpty(Mono.just(notification)
+                .filter(HouseholdMessages::isGarageAlarm)
+                .flatMap(alarm -> registry.members().map(this::garageRecipientsOf)))
             .switchIfEmpty(Mono.defer(() -> recipients));
+    }
+
+    //a fire alarm (HAS-462): every member switched on with a phone, whoever is at home
+    static List<Recipient> everybodyOf(final List<Member> members) {
+        return members.stream()
+            .filter(member -> member.name() != null && member.switchedOn() && hasPhone(member))
+            .map(member -> new Recipient(member.name(), member.phone()))
+            .toList();
     }
 
     private List<Recipient> garageRecipientsOf(final List<Member> members) {
