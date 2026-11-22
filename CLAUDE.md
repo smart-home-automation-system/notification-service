@@ -38,7 +38,7 @@ review.
   household test message to the household channel (Discord only; with `sms=true` also an SMS to the
   administrators, HAS-275; on the alert call too since HAS-335). It is deliberately **not**
   routed by `api-gateway-service`.
-- Uses libraries: `smart-home-sdk` 1.24.0 (a fire alarm and its `room` - HAS-462; 1.23.0, a garage gate left open, `openSince` / `temperature` - HAS-472; 1.22.0, the doorbell and the gate, `source` - HAS-451; the household models, since HAS-274; `member` since HAS-347; 1.15.0 since HAS-335; `MemberRequest` of 1.17.0 since HAS-410; its marks of 1.19.0 since HAS-416; the smog events and `pm10` / `pm25` of 1.21.0 since HAS-430) and
+- Uses libraries: `smart-home-sdk` 1.25.0 (`GateOpenSource.panel` - HAS-481; 1.24.0, a fire alarm and its `room` - HAS-462; 1.23.0, a garage gate left open, `openSince` / `temperature` - HAS-472; 1.22.0, the doorbell and the gate, `source` - HAS-451; the household models, since HAS-274; `member` since HAS-347; 1.15.0 since HAS-335; `MemberRequest` of 1.17.0 since HAS-410; its marks of 1.19.0 since HAS-416; the smog events and `pm10` / `pm25` of 1.21.0 since HAS-430) and
   `cholewa-commons` (1.14.0 since HAS-430; 1.13.0 since HAS-335; 1.12.0 since HAS-276; 1.11.0 since HAS-274). The `WebClient`s of the push
   transport are built from the injected builder, so the Logbook filter of the library logs them
   with the `traceId` - there is no own `LogbookClientHandler`, and none may be added (every call
@@ -176,15 +176,16 @@ review.
     refused with `sms=true`.
   - **The intercom** (HAS-451, `doorbell ringing` / `gate opened` of smart-home-sdk 1.22.0, published by gate-service -
     HAS-452): told by what it is - title `Domofon` / `Brama`, never the registry names of the station and the Shelly;
-    an opening says where from (`source` screen / dashboard, `member` after the verb, no declension), a missing
-    source `Brama otwarta.`. **A channel of its own** (`intercom-channel-id`; `DiscordBotService.sendHouseholdMessage`
+    an opening says where from (`source` screen / dashboard, `member` after the verb, no declension; panel - the entrance
+    panel at the door, `Brama otwarta z panelu w wejściu.` since HAS-481), a missing source `Brama otwarta.`. **A channel of its own** (`intercom-channel-id`; `DiscordBotService.sendHouseholdMessage`
     picks the channel by the event - one embed for all). **Never texted** (`isIntercom`, answered by
     `SmsHouseholdTransport.carries`), so its footer names nobody and the recipients are not asked. **The ring is pushed
     to every switched-on member of the registry, at home or not** (`WebPushHouseholdTransport.recipientsOf`, the
     owner 2026-11-16: somebody away may let the caller in) - a registry that cannot be read fails the transport, never a
     push to the members at home instead; tag `doorbell-<deviceId>`, it sounds again and stays on the screen; the page
     of `acknowledgePath` (the gate page, set by gate-service). **The opening is never pushed** (`carries`). The smoke
-    test `event=doorbell` (or any intercom event) posts to the intercom channel, refused with `sms=true`. No picture -
+    test `event=doorbell` (or any intercom event) posts to the intercom channel, refused with `sms=true`; `source=` gives
+    a sample `gate opened` its source (screen, dashboard, panel - HAS-481), another is a `400`. No picture -
     the station gives none (HAS-444).
   - **A garage gate left open** (HAS-472, the four `garage gate ...` events of smart-home-sdk 1.23.0, published by
     gate-service - HAS-475): on the intercom channel (`isIntercom` covers them, `isGarageGate` tells them), title
