@@ -1,5 +1,7 @@
 package cloud.cholewa.notification.discord.skippy.api;
 
+import cloud.cholewa.home.model.GateOpenSource;
+import cloud.cholewa.home.model.HouseholdNotification;
 import cloud.cholewa.notification.discord.skippy.service.DiscordBotService;
 import cloud.cholewa.notification.household.HouseholdMessage;
 import cloud.cholewa.notification.model.NotificationLevel;
@@ -99,6 +101,23 @@ class DiscordBotControllerTest {
         final ArgumentCaptor<HouseholdMessage> sent = ArgumentCaptor.forClass(HouseholdMessage.class);
         verify(discordBotService).sendHouseholdMessage(any(), sent.capture());
         assertThat(sent.getValue().text()).isEqualTo("Suszarka opróżniona - potwierdza Anna. Dziękujemy!");
+    }
+
+    //HAS-481: a gate opened from the entrance panel, on the intercom channel in its words; an unknown source refused
+    @Test
+    void should_word_a_gate_opened_from_the_panel_and_refuse_an_unknown_source() {
+        when(discordBotService.sendHouseholdMessage(any(), any())).thenReturn(Mono.empty());
+
+        webTestClient.get().uri("/skippy?category=household&event=gate opened&subject=Gate&source=panel").exchange()
+            .expectStatus().isOk();
+        webTestClient.get().uri("/skippy?category=household&event=gate opened&source=window").exchange()
+            .expectStatus().isBadRequest();
+
+        final ArgumentCaptor<HouseholdNotification> notification = ArgumentCaptor.forClass(HouseholdNotification.class);
+        final ArgumentCaptor<HouseholdMessage> sent = ArgumentCaptor.forClass(HouseholdMessage.class);
+        verify(discordBotService).sendHouseholdMessage(notification.capture(), sent.capture());
+        assertThat(notification.getValue().getSource()).isEqualTo(GateOpenSource.PANEL);
+        assertThat(sent.getValue().text()).isEqualTo("Brama otwarta z panelu w wejściu.");
     }
 
     //without anything but the category: the dishwasher finished, as the task words it

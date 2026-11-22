@@ -1,5 +1,6 @@
 package cloud.cholewa.notification.discord.skippy.api;
 
+import cloud.cholewa.home.model.GateOpenSource;
 import cloud.cholewa.home.model.HouseholdEvent;
 import cloud.cholewa.home.model.HouseholdNotification;
 import cloud.cholewa.home.model.RoomName;
@@ -35,7 +36,8 @@ import java.time.ZoneId;
  * both mappings since HAS-335. {@code event=smog} (HAS-430) is a sample {@code smog warning} of the air quality
  * sensor with its particles - Discord only, never texted: with {@code sms=true} it is refused. {@code event=doorbell}
  * (HAS-451) is a sample {@code doorbell ringing} of the station at the gate, posted to the intercom channel - as is any
- * event of the intercom ({@code doorbell ringing}, {@code gate opened}); never texted either. {@code event=fire alarm}
+ * event of the intercom ({@code doorbell ringing}, {@code gate opened} - with {@code source=} screen, dashboard or panel,
+ * HAS-481); never texted either. {@code event=fire alarm}
  * and {@code event=fire alarm over} (HAS-462) are a sample alarm and its end of a smoke detector of the kitchen - with
  * {@code sms=true} texted to the administrators alone, never to every member as the real alarm is.
  */
@@ -87,6 +89,7 @@ public class DiscordBotController {
         @RequestParam(required = false) @Size(min = 3, max = 50) final String subject,
         @RequestParam(defaultValue = "0") @Min(0) @Max(10) final int reminder,
         @RequestParam(required = false) @Size(min = 3, max = 50) final String member,
+        @RequestParam(required = false) final String source,
         @RequestParam(defaultValue = "false") final boolean sms
     ) {
         //with sms=true (HAS-275) also one SMS to the administrators of the household - asked for by name,
@@ -98,7 +101,7 @@ public class DiscordBotController {
                     new ResponseStatusException(HttpStatus.CONFLICT, "the SMS of the household is switched off"))))
             .cache();
         //deferred: an unknown event is a signal, and the smog and the intercom are never texted
-        return Mono.fromCallable(() -> sampleOf(event, subject, reminder, member))
+        return Mono.fromCallable(() -> sampleOf(event, subject, reminder, member, source))
             .filter(notification -> !sms || !neverTexted(notification))
             .switchIfEmpty(Mono.error(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
                 "the " + event + " is never texted")))
@@ -114,14 +117,14 @@ public class DiscordBotController {
     }
 
     private static HouseholdNotification sampleOf(final String event, final String subject, final int reminder,
-                                                  final String member) {
+                                                  final String member, final String source) {
         return switch (event) {
             case SMOG_SAMPLE -> smogSample(subject);
             case DOORBELL_SAMPLE -> doorbellSample(subject);
             case GARAGE_SAMPLE -> garageSample(subject);
             case FIRE_SAMPLE -> fireSample(HouseholdEvent.FIRE_ALARM, subject);
             case FIRE_OVER_SAMPLE -> fireSample(HouseholdEvent.FIRE_ALARM_OVER, subject);
-            default -> testNotification(event, subject, reminder, member);
+            default -> testNotification(event, subject, reminder, member, source);
         };
     }
 
@@ -176,7 +179,7 @@ public class DiscordBotController {
     }
 
     private static HouseholdNotification testNotification(final String event, final String subject, final int reminder,
-                                                         final String member) {
+                                                         final String member, final String source) {
         final HouseholdEvent householdEvent;
         try {
             householdEvent = HouseholdEvent.fromValue(event);
@@ -190,6 +193,19 @@ public class DiscordBotController {
             .occurredAt(LocalDateTime.now(ZoneId.systemDefault()))
             .reminder(reminder)
             .member(member)
+            .source(sourceOf(source))
             .build();
+    }
+
+    //where a sample gate opened came from (HAS-481): screen, dashboard or panel - none when not asked
+    private static GateOpenSource sourceOf(final String source) {
+        if (source == null) {
+            return null;
+        }
+        try {
+            return GateOpenSource.fromValue(source);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "unknown source of an opening: " + source);
+        }
     }
 }
