@@ -1,7 +1,7 @@
 # notification-service
 
 The way out of the system to a human: it takes notifications from RabbitMQ and posts them on
-Discord through a bot (`discord4j`). Reactive (WebFlux), Java 21, Spring Boot 4.1.3, Maven.
+Discord through a bot (`discord4j`). Reactive (WebFlux), Java 21, Spring Boot 4.2.0, Maven.
 Docker image `magikabdul/notification-service`; the pom keeps `0.0.1-SNAPSHOT`, the released
 version comes from the git tag.
 
@@ -39,7 +39,7 @@ review.
   administrators, HAS-275; on the alert call too since HAS-335). It is deliberately **not**
   routed by `api-gateway-service`.
 - Uses libraries: `smart-home-sdk` 1.25.0 (`GateOpenSource.panel` - HAS-481; 1.24.0, a fire alarm and its `room` - HAS-462; 1.23.0, a garage gate left open, `openSince` / `temperature` - HAS-472; 1.22.0, the doorbell and the gate, `source` - HAS-451; the household models, since HAS-274; `member` since HAS-347; 1.15.0 since HAS-335; `MemberRequest` of 1.17.0 since HAS-410; its marks of 1.19.0 since HAS-416; the smog events and `pm10` / `pm25` of 1.21.0 since HAS-430) and
-  `cholewa-commons` (1.14.0 since HAS-430; 1.13.0 since HAS-335; 1.12.0 since HAS-276; 1.11.0 since HAS-274). The `WebClient`s of the push
+  `cholewa-commons` (2.0.0 since HAS-498 - with Spring Boot 4.2.0 and `spring-boot-starter-rabbitmq` in place of `spring-boot-starter-amqp`; 1.14.0 since HAS-430; 1.13.0 since HAS-335; 1.12.0 since HAS-276; 1.11.0 since HAS-274). The `WebClient`s of the push
   transport are built from the injected builder, so the Logbook filter of the library logs them
   with the `traceId` - there is no own `LogbookClientHandler`, and none may be added (every call
   would be logged twice); three `@Scheduled` tasks since HAS-416 (the requests SMS since HAS-410, the announcements and the evening reminder,
@@ -176,8 +176,8 @@ review.
     refused with `sms=true`.
   - **The intercom** (HAS-451, `doorbell ringing` / `gate opened` of smart-home-sdk 1.22.0, published by gate-service -
     HAS-452): told by what it is - title `Domofon` / `Brama`, never the registry names of the station and the Shelly;
-    an opening says where from (`source` screen / dashboard, `member` after the verb, no declension; panel - the entrance
-    panel at the door, `Brama otwarta z panelu w wejściu.` since HAS-481), a missing source `Brama otwarta.`. **A channel of its own** (`intercom-channel-id`; `DiscordBotService.sendHouseholdMessage`
+    an opening says where from (`source` screen / dashboard, `member` after the verb, no declension; panel - a wall panel, the entrance
+    panel at the door or the hall panel upstairs under one source, `Brama otwarta z panelu ściennego.` since HAS-498), a missing source `Brama otwarta.`. **A channel of its own** (`intercom-channel-id`; `DiscordBotService.sendHouseholdMessage`
     picks the channel by the event - one embed for all). **Never texted** (`isIntercom`, answered by
     `SmsHouseholdTransport.carries`), so its footer names nobody and the recipients are not asked. **The ring is pushed
     to every switched-on member of the registry, at home or not** (`WebPushHouseholdTransport.recipientsOf`, the
