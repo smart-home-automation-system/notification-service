@@ -200,7 +200,7 @@ spring:
     activate:
       on-profile: test
   autoconfigure:
-    exclude: org.springframework.boot.amqp.autoconfigure.RabbitAutoConfiguration
+    exclude: org.springframework.boot.rabbitmq.autoconfigure.RabbitAutoConfiguration
 
 discord:
   bot:

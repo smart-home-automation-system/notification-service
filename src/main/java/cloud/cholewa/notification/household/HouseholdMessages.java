@@ -338,7 +338,8 @@ public final class HouseholdMessages {
     }
 
     //from the screen, from the application by a member (the name after the verb, no case), from a wall panel - the
-    //entrance panel at the door or the hall panel upstairs, one source for both (HAS-481, HAS-498) - or from where not known
+    //entrance panel at the door or the hall panel upstairs, one source for both (HAS-481, HAS-498) - or from where
+    //not known
     private static String gateOpened(final HouseholdNotification notification) {
         final Optional<String> member = Optional.ofNullable(notification.getMember())
             .map(String::strip)

@@ -191,8 +191,8 @@ class HouseholdMessagesTest {
         assertThat(message.color()).isEqualTo(HouseholdMessages.DOORBELL_COLOR);
     }
 
-    //an opening of the gate says where from: the screen, the application by a member, a wall panel (HAS-481, HAS-498), or
-    //nothing known
+    //an opening of the gate says where from: the screen, the application by a member, a wall panel (HAS-481,
+    //HAS-498), or nothing known
     @Test
     void should_word_an_opening_of_the_gate_by_where_it_came_from() {
         final HouseholdNotification opened = notification("Gate", HouseholdEvent.GATE_OPENED, 0);
