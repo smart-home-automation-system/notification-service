@@ -12,7 +12,7 @@
 
 ![GitHub top language](https://img.shields.io/github/languages/top/smart-home-automation-system/notification-service?style=plastic)
 ![Java](https://img.shields.io/badge/java-21-yellow?style=plastic)
-![SpringBoot](https://img.shields.io/badge/SpringBoot-4.1.3-blue?style=plastic)
+![SpringBoot](https://img.shields.io/badge/SpringBoot-4.2.0-blue?style=plastic)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=smart-home-automation-system_notification-service&metric=coverage)](https://sonarcloud.io/summary/new_code?id=smart-home-automation-system_notification-service)
 [![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=smart-home-automation-system_notification-service&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=smart-home-automation-system_notification-service)
 
@@ -82,7 +82,7 @@ Polish names, whatever the case of the registry name (`Washing machine` - `Pralk
 | `smog warning` (since HAS-430, published by weather-service) | `Smog na zewnątrz: PM10 112 µg/m³, PM2.5 78 µg/m³ - poziom zły. Zamknij okna i nie wietrz.` - "bardzo zły" above 150 of PM10 or 110 of PM2.5 (the GIOS index); without the numbers `Smog na zewnątrz - poziom zły. ...` | amber, red when very bad |
 | `smog over` (since HAS-430) | `Powietrze na zewnątrz znów w normie (PM10 35 µg/m³).` | green |
 | `doorbell ringing` (since HAS-451, published by gate-service) | title `Domofon`: `Ktoś dzwoni do bramy.` | blue |
-| `gate opened` (since HAS-451) | title `Brama`: `Brama otwarta z ekranu domofonu.`; from the application `Brama otwarta z aplikacji - otwiera <member>.`; from the entrance panel (since HAS-481) `Brama otwarta z panelu w wejściu.` | green |
+| `gate opened` (since HAS-451) | title `Brama`: `Brama otwarta z ekranu domofonu.`; from the application `Brama otwarta z aplikacji - otwiera <member>.`; from a wall panel - the entrance panel or the hall panel, one source (HAS-481, the words since HAS-498) `Brama otwarta z panelu ściennego.` | green |
 | `garage gate open cold` (since HAS-472, published by gate-service) | title `Brama garażowa <name>`: `Otwarta od 15 min, a na zewnątrz 7,5 °C - zamknij ją.`; a repeat ends `(przypomnienie <n>)` | red |
 | `garage gate open empty house` (since HAS-472) | `Otwarta od 5 min, a w domu nikogo nie ma - zamknij ją.` | red |
 | `garage gate open long` (since HAS-472) | `Otwarta od 30 min.` | amber |

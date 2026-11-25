@@ -103,7 +103,7 @@ class DiscordBotControllerTest {
         assertThat(sent.getValue().text()).isEqualTo("Suszarka opróżniona - potwierdza Anna. Dziękujemy!");
     }
 
-    //HAS-481: a gate opened from the entrance panel, on the intercom channel in its words; an unknown source refused
+    //HAS-481, HAS-498: a gate opened from a wall panel, on the intercom channel in its words; an unknown source refused
     @Test
     void should_word_a_gate_opened_from_the_panel_and_refuse_an_unknown_source() {
         when(discordBotService.sendHouseholdMessage(any(), any())).thenReturn(Mono.empty());
@@ -117,7 +117,7 @@ class DiscordBotControllerTest {
         final ArgumentCaptor<HouseholdMessage> sent = ArgumentCaptor.forClass(HouseholdMessage.class);
         verify(discordBotService).sendHouseholdMessage(notification.capture(), sent.capture());
         assertThat(notification.getValue().getSource()).isEqualTo(GateOpenSource.PANEL);
-        assertThat(sent.getValue().text()).isEqualTo("Brama otwarta z panelu w wejściu.");
+        assertThat(sent.getValue().text()).isEqualTo("Brama otwarta z panelu ściennego.");
     }
 
     //without anything but the category: the dishwasher finished, as the task words it
