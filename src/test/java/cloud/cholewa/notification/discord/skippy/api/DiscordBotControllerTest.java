@@ -1,6 +1,7 @@
 package cloud.cholewa.notification.discord.skippy.api;
 
 import cloud.cholewa.home.model.GateOpenSource;
+import cloud.cholewa.home.model.HouseholdEvent;
 import cloud.cholewa.home.model.HouseholdNotification;
 import cloud.cholewa.notification.discord.skippy.service.DiscordBotService;
 import cloud.cholewa.notification.household.HouseholdMessage;
@@ -19,6 +20,7 @@ import reactor.core.publisher.Mono;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -118,6 +120,41 @@ class DiscordBotControllerTest {
         verify(discordBotService).sendHouseholdMessage(notification.capture(), sent.capture());
         assertThat(notification.getValue().getSource()).isEqualTo(GateOpenSource.PANEL);
         assertThat(sent.getValue().text()).isEqualTo("Brama otwarta z panelu ściennego.");
+    }
+
+    //HAS-522: the three samples of load shedding, of the SOLAX with its loads, on the household channel
+    @Test
+    void should_post_the_three_samples_of_load_shedding() {
+        when(discordBotService.sendHouseholdMessage(any(), any())).thenReturn(Mono.empty());
+
+        webTestClient.get().uri("/skippy?category=household&event=load shedding started").exchange()
+            .expectStatus().isOk();
+        webTestClient.get().uri("/skippy?category=household&event=load shedding device running").exchange()
+            .expectStatus().isOk();
+        webTestClient.get().uri("/skippy?category=household&event=load shedding over").exchange()
+            .expectStatus().isOk();
+
+        final ArgumentCaptor<HouseholdNotification> notification = ArgumentCaptor.forClass(HouseholdNotification.class);
+        final ArgumentCaptor<HouseholdMessage> sent = ArgumentCaptor.forClass(HouseholdMessage.class);
+        verify(discordBotService, times(3)).sendHouseholdMessage(notification.capture(), sent.capture());
+        assertThat(notification.getAllValues()).extracting(HouseholdNotification::getEvent).containsExactly(
+            HouseholdEvent.LOAD_SHEDDING_STARTED, HouseholdEvent.LOAD_SHEDDING_DEVICE_RUNNING,
+            HouseholdEvent.LOAD_SHEDDING_OVER);
+        assertThat(notification.getAllValues()).extracting(HouseholdNotification::getSubject).containsOnly("SOLAX");
+        assertThat(sent.getAllValues()).extracting(HouseholdMessage::text).containsExactly(
+            "Brak prądu z sieci - dom działa na baterii. Nie używaj płyty indukcyjnej ani piekarnika."
+                + " Wyłączone: Czajnik, Pralka.",
+            "Wciąż pracuje: Zmywarka. Zatrzymaj je, jeśli możesz - zostanie wyłączone, gdy skończy pracę.",
+            "Urządzenia znów włączone: Czajnik, Pralka, Zmywarka.");
+    }
+
+    //the end of load shedding is never texted, so its sample is refused with sms=true
+    @Test
+    void should_refuse_to_text_the_end_of_load_shedding() {
+        webTestClient.get().uri("/skippy?category=household&event=load shedding over&sms=true").exchange()
+            .expectStatus().isBadRequest();
+
+        verifyNoInteractions(discordBotService);
     }
 
     //without anything but the category: the dishwasher finished, as the task words it

@@ -113,6 +113,30 @@ class SmsHouseholdTransportTest {
         verify(client).send("Jan", "+48500000002", text);
     }
 
+    //HAS-522: the start of load shedding and a load still at work go to the members at home, the title first; the end
+    //is never texted
+    @Test
+    void should_text_load_shedding_to_the_members_at_home_but_never_its_end() {
+        final HouseholdNotification started = loadShedding(HouseholdEvent.LOAD_SHEDDING_STARTED);
+        when(recipients.of(started)).thenReturn(Mono.just(List.of(OLA)));
+        when(client.send(anyString(), anyString(), anyString())).thenReturn(Mono.just(true));
+
+        assertThat(sut.carries(started)).isTrue();
+        assertThat(sut.carries(loadShedding(HouseholdEvent.LOAD_SHEDDING_DEVICE_RUNNING))).isTrue();
+        assertThat(sut.carries(loadShedding(HouseholdEvent.LOAD_SHEDDING_OVER))).isFalse();
+
+        sut.deliver(started, HouseholdMessages.of(started)).as(StepVerifier::create).verifyComplete();
+
+        verify(client).send("Ola", "+48500000001", "Praca na baterii: Brak prądu z sieci - dom działa na baterii. Nie używaj płyty indukcyjnej ani piekarnika."
+            + " Wyłączone: Czajnik.");
+    }
+
+    private static HouseholdNotification loadShedding(final HouseholdEvent event) {
+        return HouseholdNotification.builder()
+            .event(event).subject("SOLAX").deviceId(134L)
+            .occurredAt(LocalDateTime.of(2026, 11, 28, 10, 0)).reminder(0).devices(List.of("Czajnik")).build();
+    }
+
     private static HouseholdNotification garage(final HouseholdEvent event, final int reminder) {
         return HouseholdNotification.builder()
             .event(event).subject("Kate").deviceId(148L)

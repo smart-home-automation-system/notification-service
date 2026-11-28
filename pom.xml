@@ -33,7 +33,7 @@
 
 		<!--  internal dependencies versions-->
 		<cholewa-commons.version>2.0.0</cholewa-commons.version>
-		<smart-home-sdk.version>1.25.0</smart-home-sdk.version>
+		<smart-home-sdk.version>1.27.0</smart-home-sdk.version>
 
 		<!--  plugins versions-->
 		<tidy-maven-plugin.version>1.5.0</tidy-maven-plugin.version>

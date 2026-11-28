@@ -158,6 +158,41 @@ class WebPushHouseholdTransportTest {
         verifyNoInteractions(presentMembers);
     }
 
+    //HAS-522: load shedding goes to the members at home - the registry is not asked; one tag on the phone, the end
+    //replaces the start silently
+    @Test
+    void should_push_load_shedding_to_the_members_at_home_and_replace_it_with_its_end() {
+        final HouseholdNotification started = loadShedding(HouseholdEvent.LOAD_SHEDDING_STARTED);
+        final HouseholdNotification over = loadShedding(HouseholdEvent.LOAD_SHEDDING_OVER);
+        when(presentMembers.present()).thenReturn(Mono.just(List.of("Ola")));
+        when(subscriptions.ofMembers(List.of("Ola"))).thenReturn(Mono.just(List.of(subscription(APPLE))));
+        when(sender.send(any(), any(), any())).thenReturn(Mono.just(WebPushSender.Outcome.DELIVERED));
+
+        sut.deliver(started, HouseholdMessages.of(started)).as(StepVerifier::create).verifyComplete();
+        sut.deliver(over, HouseholdMessages.of(over)).as(StepVerifier::create).verifyComplete();
+
+        final ArgumentCaptor<byte[]> payload = ArgumentCaptor.forClass(byte[].class);
+        verify(sender, times(2)).send(any(), any(), payload.capture());
+        final JsonNode shownStarted = jsonMapper.readTree(payload.getAllValues().get(0)).get("notification");
+        final JsonNode shownOver = jsonMapper.readTree(payload.getAllValues().get(1)).get("notification");
+        assertThat(shownStarted.get("title").asString()).isEqualTo("Praca na baterii");
+        assertThat(shownStarted.get("tag").asString()).isEqualTo("load-shedding-134");
+        assertThat(shownStarted.get("renotify").asBoolean()).isTrue();
+        assertThat(shownOver.get("title").asString()).isEqualTo("Prąd z sieci wrócił");
+        assertThat(shownOver.get("tag").asString()).isEqualTo("load-shedding-134");
+        assertThat(shownOver.get("renotify").asBoolean()).isFalse();
+        assertThat(shownOver.get("requireInteraction").asBoolean()).isFalse();
+        assertThat(sut.carries(started)).isTrue();
+        assertThat(sut.carries(loadShedding(HouseholdEvent.LOAD_SHEDDING_DEVICE_RUNNING))).isTrue();
+        assertThat(sut.carries(over)).isTrue();
+        verifyNoInteractions(registry);
+    }
+
+    private static HouseholdNotification loadShedding(final HouseholdEvent event) {
+        return HouseholdNotification.builder().event(event).subject("SOLAX").deviceId(134L)
+            .occurredAt(LocalDateTime.of(2026, 11, 28, 10, 0)).reminder(0).devices(List.of("Czajnik")).build();
+    }
+
     private static HouseholdNotification fire(final HouseholdEvent event) {
         return HouseholdNotification.builder().event(event).subject("Smoke detector").deviceId(151L)
             .room(RoomName.KITCHEN).occurredAt(LocalDateTime.of(2026, 11, 20, 19, 15)).reminder(0).build();

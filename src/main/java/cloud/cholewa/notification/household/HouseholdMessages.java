@@ -10,8 +10,10 @@ import lombok.NoArgsConstructor;
 import java.time.Duration;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -44,6 +46,11 @@ import java.util.Optional;
  * miss - texted to every member with a phone and pushed to every member, at home or not. Told by the detector (the
  * three kinds of the registry by their Polish names, any other name as it comes) and the room of the payload in Polish
  * after a colon - the nominative, no declension, no gender to agree with. The alarm in red, the end in green.
+ *
+ * <p>Load shedding while the grid is lost (HAS-522, smart-home-sdk 1.27.0, published by energy-service - HAS-525): the
+ * subject is the inverter, so the title says what it is - "Praca na baterii", "Prąd z sieci wrócił"; the loads of
+ * {@code devices} after a colon, as energy-service names them. The start in orange, a load still at work in amber, the
+ * end in green.
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class HouseholdMessages {
@@ -70,6 +77,13 @@ public final class HouseholdMessages {
     static final int FIRE_ALARM_OVER_COLOR = 0x2ECC71;
     static final String FIRE_ALARM_TITLE = "Alarm pożarowy";
     static final String FIRE_ALARM_OVER_TITLE = "Koniec alarmu pożarowego";
+    //load shedding (HAS-522): the start asks the household to spare the battery, a load still at work asks somebody to
+    //stop it, the end is good news
+    static final int LOAD_SHEDDING_STARTED_COLOR = 0xE67E22;
+    static final int LOAD_SHEDDING_DEVICE_RUNNING_COLOR = 0xF39C12;
+    static final int LOAD_SHEDDING_OVER_COLOR = 0x2ECC71;
+    static final String LOAD_SHEDDING_TITLE = "Praca na baterii";
+    static final String LOAD_SHEDDING_OVER_TITLE = "Prąd z sieci wrócił";
     private static final Locale POLISH = Locale.forLanguageTag("pl");
     //the clock the publishers stamp occurredAt and openSince with
     private static final ZoneId HOUSE = ZoneId.of("Europe/Warsaw");
@@ -103,6 +117,9 @@ public final class HouseholdMessages {
         if (isFire(notification)) {
             return fire(notification, footer);
         }
+        if (isLoadShedding(notification)) {
+            return loadShedding(notification, footer);
+        }
         return polishNameOf(notification.getSubject())
             .map(name -> named(notification, name, footer))
             .orElseGet(() -> unnamed(notification, footer));
@@ -132,6 +149,8 @@ public final class HouseholdMessages {
             case DOORBELL_RINGING, GATE_OPENED, GARAGE_GATE_OPEN_COLD, GARAGE_GATE_OPEN_EMPTY_HOUSE, GARAGE_GATE_OPEN_LONG,
                  GARAGE_GATE_CLOSED -> intercom(notification, footer);
             case FIRE_ALARM, FIRE_ALARM_OVER -> fire(notification, footer);
+            case LOAD_SHEDDING_STARTED, LOAD_SHEDDING_DEVICE_RUNNING, LOAD_SHEDDING_OVER ->
+                loadShedding(notification, footer);
         };
     }
 
@@ -187,7 +206,45 @@ public final class HouseholdMessages {
             case DOORBELL_RINGING, GATE_OPENED, GARAGE_GATE_OPEN_COLD, GARAGE_GATE_OPEN_EMPTY_HOUSE, GARAGE_GATE_OPEN_LONG,
                  GARAGE_GATE_CLOSED -> intercom(notification, footer);
             case FIRE_ALARM, FIRE_ALARM_OVER -> fire(notification, footer);
+            case LOAD_SHEDDING_STARTED, LOAD_SHEDDING_DEVICE_RUNNING, LOAD_SHEDDING_OVER ->
+                loadShedding(notification, footer);
         };
+    }
+
+    //the events of load shedding while the grid is lost (HAS-522)
+    public static boolean isLoadShedding(final HouseholdNotification notification) {
+        return notification.getEvent() == HouseholdEvent.LOAD_SHEDDING_STARTED
+            || notification.getEvent() == HouseholdEvent.LOAD_SHEDDING_DEVICE_RUNNING
+            || notification.getEvent() == HouseholdEvent.LOAD_SHEDDING_OVER;
+    }
+
+    //the loads after a colon (HAS-522): names of the plugs of energy-service as they come, so no case and no gender to
+    //agree with; the verb of a load still at work agrees in number only
+    private static HouseholdMessage loadShedding(final HouseholdNotification notification, final String footer) {
+        final List<String> devices = devicesOf(notification);
+        final String named = String.join(", ", devices);
+        return switch (notification.getEvent()) {
+            case LOAD_SHEDDING_DEVICE_RUNNING -> new HouseholdMessage(LOAD_SHEDDING_TITLE, devices.size() > 1
+                ? "Wciąż pracują: " + named + ". Zatrzymaj je, jeśli możesz - zostaną wyłączone, gdy skończą pracę."
+                : "Wciąż pracuje: " + (devices.isEmpty() ? "urządzenie" : named)
+                    + ". Zatrzymaj je, jeśli możesz - zostanie wyłączone, gdy skończy pracę.",
+                footer, LOAD_SHEDDING_DEVICE_RUNNING_COLOR);
+            case LOAD_SHEDDING_OVER -> new HouseholdMessage(LOAD_SHEDDING_OVER_TITLE,
+                devices.isEmpty() ? "Urządzenia znów włączone." : "Urządzenia znów włączone: " + named + ".",
+                footer, LOAD_SHEDDING_OVER_COLOR);
+            default -> new HouseholdMessage(LOAD_SHEDDING_TITLE, "Brak prądu z sieci - dom działa na baterii."
+                + " Nie używaj płyty indukcyjnej ani piekarnika."
+                + (devices.isEmpty() ? "" : " Wyłączone: " + named + "."), footer, LOAD_SHEDDING_STARTED_COLOR);
+        };
+    }
+
+    //a blank name is left out - the SDK bounds a name from 1 character, and a space is one
+    private static List<String> devicesOf(final HouseholdNotification notification) {
+        return Optional.ofNullable(notification.getDevices()).orElse(List.of()).stream()
+            .filter(Objects::nonNull)
+            .map(String::strip)
+            .filter(name -> !name.isEmpty())
+            .toList();
     }
 
     //the events of the intercom (HAS-451) and of the garage gates (HAS-472) - on the intercom channel of Discord
@@ -215,13 +272,15 @@ public final class HouseholdMessages {
      * Whether a message goes by SMS: never the smog (HAS-430) nor the doorbell and the gate (HAS-451); of a garage
      * gate only the first message of an alarm (HAS-472, owner 2026-11-18 - the warning, a repeat and the end never) -
      * and that one to the members named for it, at home or not. Both events of a fire alarm are texted, to every member
-     * with a phone at home or not (HAS-462).
+     * with a phone at home or not (HAS-462). Of load shedding (HAS-522) the start and a load still at work, to the
+     * members at home - the end never.
      */
     public static boolean isTexted(final HouseholdNotification notification) {
         if (isGarageAlarm(notification)) {
             return Integer.valueOf(0).equals(notification.getReminder());
         }
-        return !isSmog(notification) && !isIntercom(notification);
+        return !isSmog(notification) && !isIntercom(notification)
+            && notification.getEvent() != HouseholdEvent.LOAD_SHEDDING_OVER;
     }
 
     //the start and the end of an alarm of a fire detector (HAS-462)

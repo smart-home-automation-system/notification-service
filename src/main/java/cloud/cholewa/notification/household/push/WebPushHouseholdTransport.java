@@ -38,6 +38,9 @@ import java.util.List;
  * <p>
  * Both events of a fire alarm (HAS-462) go to every switched-on member, at home or not - the end too, so that it
  * replaces the alarm on the phones that showed it.
+ * <p>
+ * The three events of load shedding (HAS-522) go to the members at home - the house without the grid is where they are;
+ * the end replaces the start silently.
  */
 @Slf4j
 class WebPushHouseholdTransport implements HouseholdTransport {

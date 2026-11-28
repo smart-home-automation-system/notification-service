@@ -10,6 +10,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -102,7 +103,8 @@ class HouseholdMessagesTest {
     //their own tests
     @ParameterizedTest
     @EnumSource(value = HouseholdEvent.class, names = {"SMOG_WARNING", "SMOG_OVER", "DOORBELL_RINGING", "GATE_OPENED", "GARAGE_GATE_OPEN_COLD",
-        "GARAGE_GATE_OPEN_EMPTY_HOUSE", "GARAGE_GATE_OPEN_LONG", "GARAGE_GATE_CLOSED", "FIRE_ALARM", "FIRE_ALARM_OVER"},
+        "GARAGE_GATE_OPEN_EMPTY_HOUSE", "GARAGE_GATE_OPEN_LONG", "GARAGE_GATE_CLOSED", "FIRE_ALARM", "FIRE_ALARM_OVER",
+        "LOAD_SHEDDING_STARTED", "LOAD_SHEDDING_DEVICE_RUNNING", "LOAD_SHEDDING_OVER"},
         mode = EnumSource.Mode.EXCLUDE)
     void should_word_every_event(final HouseholdEvent event) {
         final HouseholdMessage message = HouseholdMessages.of(notification("Dishwasher", event, 1));
@@ -115,7 +117,8 @@ class HouseholdMessagesTest {
     //and the same for a device without a Polish name
     @ParameterizedTest
     @EnumSource(value = HouseholdEvent.class, names = {"SMOG_WARNING", "SMOG_OVER", "DOORBELL_RINGING", "GATE_OPENED", "GARAGE_GATE_OPEN_COLD",
-        "GARAGE_GATE_OPEN_EMPTY_HOUSE", "GARAGE_GATE_OPEN_LONG", "GARAGE_GATE_CLOSED", "FIRE_ALARM", "FIRE_ALARM_OVER"},
+        "GARAGE_GATE_OPEN_EMPTY_HOUSE", "GARAGE_GATE_OPEN_LONG", "GARAGE_GATE_CLOSED", "FIRE_ALARM", "FIRE_ALARM_OVER",
+        "LOAD_SHEDDING_STARTED", "LOAD_SHEDDING_DEVICE_RUNNING", "LOAD_SHEDDING_OVER"},
         mode = EnumSource.Mode.EXCLUDE)
     void should_word_every_event_of_another_device(final HouseholdEvent event) {
         final HouseholdMessage message = HouseholdMessages.of(notification("Coffee machine", event, 1));
@@ -340,6 +343,82 @@ class HouseholdMessagesTest {
         assertThat(HouseholdMessages.isTexted(fire(HouseholdEvent.FIRE_ALARM_OVER, "Smoke detector", RoomName.KITCHEN))).isTrue();
         assertThat(HouseholdMessages.isIntercom(fire(HouseholdEvent.FIRE_ALARM, "Smoke detector", RoomName.KITCHEN))).isFalse();
         assertThat(HouseholdMessages.isFire(notification("Dryer", HouseholdEvent.APPLIANCE_FINISHED, 0))).isFalse();
+    }
+
+    //HAS-522: load shedding - told by what it is, the loads after a colon as energy-service names them; the words are
+    //the owner's call on a real message
+    @Test
+    void should_word_the_start_of_load_shedding() {
+        final HouseholdMessage started = HouseholdMessages.of(
+            loadShedding(HouseholdEvent.LOAD_SHEDDING_STARTED, List.of("Czajnik", "Pralka")));
+
+        assertThat(started.title()).isEqualTo("Praca na baterii");
+        assertThat(started.text()).isEqualTo("Brak prądu z sieci - dom działa na baterii. Nie używaj płyty indukcyjnej ani piekarnika."
+            + " Wyłączone: Czajnik, Pralka.");
+        assertThat(started.color()).isEqualTo(HouseholdMessages.LOAD_SHEDDING_STARTED_COLOR);
+        assertThat(started.footer()).isEqualTo("24.10.2026 19:05");
+        assertThat(HouseholdMessages.of(loadShedding(HouseholdEvent.LOAD_SHEDDING_STARTED, List.of())).text())
+            .isEqualTo("Brak prądu z sieci - dom działa na baterii. Nie używaj płyty indukcyjnej ani piekarnika.");
+    }
+
+    //one load and more agree in number; the names are never declined
+    @Test
+    void should_ask_to_stop_a_load_still_at_work() {
+        final HouseholdMessage one = HouseholdMessages.of(
+            loadShedding(HouseholdEvent.LOAD_SHEDDING_DEVICE_RUNNING, List.of("Zmywarka")));
+
+        assertThat(one.title()).isEqualTo("Praca na baterii");
+        assertThat(one.text())
+            .isEqualTo("Wciąż pracuje: Zmywarka. Zatrzymaj je, jeśli możesz - zostanie wyłączone, gdy skończy pracę.");
+        assertThat(one.color()).isEqualTo(HouseholdMessages.LOAD_SHEDDING_DEVICE_RUNNING_COLOR);
+        assertThat(HouseholdMessages.of(
+            loadShedding(HouseholdEvent.LOAD_SHEDDING_DEVICE_RUNNING, List.of("Zmywarka", "Pralka"))).text())
+            .isEqualTo("Wciąż pracują: Zmywarka, Pralka. Zatrzymaj je, jeśli możesz - zostaną wyłączone, gdy skończą pracę.");
+        assertThat(HouseholdMessages.of(loadShedding(HouseholdEvent.LOAD_SHEDDING_DEVICE_RUNNING, List.of())).text())
+            .isEqualTo("Wciąż pracuje: urządzenie. Zatrzymaj je, jeśli możesz - zostanie wyłączone, gdy skończy pracę.");
+    }
+
+    @Test
+    void should_say_that_the_grid_is_back_and_the_loads_on() {
+        final HouseholdMessage over = HouseholdMessages.of(
+            loadShedding(HouseholdEvent.LOAD_SHEDDING_OVER, List.of("Czajnik", "Pralka")));
+
+        assertThat(over.title()).isEqualTo("Prąd z sieci wrócił");
+        assertThat(over.text()).isEqualTo("Urządzenia znów włączone: Czajnik, Pralka.");
+        assertThat(over.color()).isEqualTo(HouseholdMessages.LOAD_SHEDDING_OVER_COLOR);
+        assertThat(HouseholdMessages.of(loadShedding(HouseholdEvent.LOAD_SHEDDING_OVER, List.of())).text())
+            .isEqualTo("Urządzenia znów włączone.");
+    }
+
+    //a blank name says nothing, so it is left out rather than shown as an empty place in the list
+    @Test
+    void should_leave_out_a_blank_load() {
+        assertThat(HouseholdMessages.of(loadShedding(HouseholdEvent.LOAD_SHEDDING_OVER, List.of(" ", " Czajnik "))).text())
+            .isEqualTo("Urządzenia znów włączone: Czajnik.");
+    }
+
+    //the subject is the inverter: never read as an appliance, even when it has the name of one
+    @Test
+    void should_word_load_shedding_whatever_the_subject() {
+        final HouseholdNotification started = loadShedding(HouseholdEvent.LOAD_SHEDDING_STARTED, List.of("Pralka"))
+            .subject("Dishwasher");
+
+        assertThat(HouseholdMessages.of(started).title()).isEqualTo("Praca na baterii");
+    }
+
+    //the start and a load still at work texted, the end never; on the household channel, not the intercom
+    @Test
+    void should_text_load_shedding_but_its_end() {
+        assertThat(HouseholdMessages.isTexted(loadShedding(HouseholdEvent.LOAD_SHEDDING_STARTED, List.of()))).isTrue();
+        assertThat(HouseholdMessages.isTexted(loadShedding(HouseholdEvent.LOAD_SHEDDING_DEVICE_RUNNING, List.of()))).isTrue();
+        assertThat(HouseholdMessages.isTexted(loadShedding(HouseholdEvent.LOAD_SHEDDING_OVER, List.of()))).isFalse();
+        assertThat(HouseholdMessages.isIntercom(loadShedding(HouseholdEvent.LOAD_SHEDDING_STARTED, List.of()))).isFalse();
+        assertThat(HouseholdMessages.isLoadShedding(loadShedding(HouseholdEvent.LOAD_SHEDDING_OVER, List.of()))).isTrue();
+        assertThat(HouseholdMessages.isLoadShedding(notification("Dryer", HouseholdEvent.APPLIANCE_FINISHED, 0))).isFalse();
+    }
+
+    private static HouseholdNotification loadShedding(final HouseholdEvent event, final List<String> devices) {
+        return notification("SOLAX", event, 0).devices(devices);
     }
 
     private static HouseholdNotification fire(final HouseholdEvent event, final String detector, final RoomName room) {

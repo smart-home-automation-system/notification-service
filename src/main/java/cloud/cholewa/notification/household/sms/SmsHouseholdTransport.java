@@ -26,6 +26,9 @@ import java.util.List;
  * not ({@link SmsRecipients#of}); the warning, a repeat and the end never ({@link HouseholdMessages#isTexted}).
  * <p>
  * Both events of a fire alarm (HAS-462) go to every member switched on with a phone, at home or not.
+ * <p>
+ * Of load shedding (HAS-522) the start and a load still at work go to the members at home, their title first; the end
+ * is never texted.
  */
 @Slf4j
 class SmsHouseholdTransport implements HouseholdTransport {
@@ -55,14 +58,7 @@ class SmsHouseholdTransport implements HouseholdTransport {
         return recipients.of(notification)
             .filter(found -> !found.isEmpty())
             .switchIfEmpty(Mono.fromRunnable(() -> nobodyToText(notification)))
-            .flatMap(found -> send(found, textOf(notification, message), notification));
-    }
-
-    //the sentence of a garage gate does not name the gate, nor that of a fire alarm the fire: its title goes before it
-    private static String textOf(final HouseholdNotification notification, final HouseholdMessage message) {
-        return HouseholdMessages.isGarageGate(notification) || HouseholdMessages.isFire(notification)
-            ? SmsText.titled(message)
-            : SmsText.of(message);
+            .flatMap(found -> send(found, SmsText.of(notification, message), notification));
     }
 
     //nobody at home is no failure; nobody of the members named for a garage alarm, or nobody of the household with a

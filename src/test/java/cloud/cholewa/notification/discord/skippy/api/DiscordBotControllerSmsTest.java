@@ -21,6 +21,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -91,7 +92,7 @@ class DiscordBotControllerSmsTest {
     @Test
     void should_text_the_administrators_the_words_posted_to_discord() {
         when(discordBotService.sendHouseholdMessage(any(), any())).thenReturn(Mono.empty());
-        when(smsSmoke.sendToAdministrators(any())).thenReturn(Mono.just(1L));
+        when(smsSmoke.sendToAdministrators(any(), any())).thenReturn(Mono.just(1L));
 
         webTestClient.get()
             .uri("/skippy?category=household&sms=true")
@@ -100,7 +101,7 @@ class DiscordBotControllerSmsTest {
 
         final ArgumentCaptor<HouseholdMessage> posted = ArgumentCaptor.forClass(HouseholdMessage.class);
         verify(discordBotService).sendHouseholdMessage(any(), posted.capture());
-        verify(smsSmoke).sendToAdministrators(posted.getValue());
+        verify(smsSmoke).sendToAdministrators(any(), eq(posted.getValue()));
         assertThat(posted.getValue().text()).isEqualTo("Zmywarka skończyła pracę - czas ją opróżnić.");
     }
 
@@ -109,7 +110,7 @@ class DiscordBotControllerSmsTest {
     @Test
     void should_post_a_fire_alarm_sample_and_text_it_to_the_administrators_alone() {
         when(discordBotService.sendHouseholdMessage(any(), any())).thenReturn(Mono.empty());
-        when(smsSmoke.sendToAdministrators(any())).thenReturn(Mono.just(1L));
+        when(smsSmoke.sendToAdministrators(any(), any())).thenReturn(Mono.just(1L));
 
         webTestClient.get().uri("/skippy?category=household&event=fire alarm&sms=true").exchange().expectStatus().isOk();
         webTestClient.get().uri("/skippy?category=household&event=fire alarm over").exchange().expectStatus().isOk();
@@ -121,7 +122,7 @@ class DiscordBotControllerSmsTest {
             .containsExactly(HouseholdEvent.FIRE_ALARM, HouseholdEvent.FIRE_ALARM_OVER);
         assertThat(posted.getAllValues().get(0).title()).isEqualTo("Alarm pożarowy");
         assertThat(posted.getAllValues().get(1).text()).isEqualTo("Czujka dymu w pomieszczeniu: kuchnia - alarm ustał.");
-        verify(smsSmoke).sendToAdministrators(posted.getAllValues().get(0));
+        verify(smsSmoke).sendToAdministrators(eq(event.getAllValues().get(0)), eq(posted.getAllValues().get(0)));
     }
 
     //HAS-430: event=smog is a sample smog warning on Discord - never texted, so with sms=true it is refused
