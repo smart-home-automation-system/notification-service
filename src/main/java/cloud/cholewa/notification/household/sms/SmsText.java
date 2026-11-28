@@ -1,6 +1,8 @@
 package cloud.cholewa.notification.household.sms;
 
+import cloud.cholewa.home.model.HouseholdNotification;
 import cloud.cholewa.notification.household.HouseholdMessage;
+import cloud.cholewa.notification.household.HouseholdMessages;
 import cloud.cholewa.notification.model.NotificationLevel;
 
 /**
@@ -16,6 +18,18 @@ final class SmsText {
     private static final String GSM_CUT = "...";
 
     private SmsText() {
+    }
+
+    /**
+     * The SMS of a household notification - one rule for the transport and the smoke test: the sentence of a garage
+     * gate does not name the gate, nor that of a fire alarm the fire, nor that of load shedding (HAS-522) the battery,
+     * so its title goes before it; every other sentence names its subject.
+     */
+    static String of(final HouseholdNotification notification, final HouseholdMessage message) {
+        return HouseholdMessages.isGarageGate(notification) || HouseholdMessages.isFire(notification)
+            || HouseholdMessages.isLoadShedding(notification)
+            ? titled(message)
+            : of(message);
     }
 
     static String of(final HouseholdMessage message) {

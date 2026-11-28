@@ -1,5 +1,6 @@
 package cloud.cholewa.notification.household.sms;
 
+import cloud.cholewa.home.model.HouseholdNotification;
 import cloud.cholewa.notification.household.HouseholdMessage;
 import cloud.cholewa.notification.household.members.HouseholdRegistryClient;
 import lombok.extern.slf4j.Slf4j;
@@ -22,8 +23,9 @@ public class SmsSmoke {
         this.client = client;
     }
 
-    public Mono<Long> sendToAdministrators(final HouseholdMessage message) {
-        final String text = SmsText.of(message);
+    //the text a real notification of the sample would send (HAS-522: the title first where the transport puts it)
+    public Mono<Long> sendToAdministrators(final HouseholdNotification notification, final HouseholdMessage message) {
+        final String text = SmsText.of(notification, message);
         return registry.members()
             .map(SmsRecipients::administratorsOf)
             .flatMapMany(Flux::fromIterable)

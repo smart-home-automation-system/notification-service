@@ -40,6 +40,8 @@ final class PushPayload {
             case APPLIANCE_FINISHED, APPLIANCE_REMINDER, APPLIANCE_ACKNOWLEDGED -> "appliance-";
             //the end of a fire alarm replaces the alarm of the same detector (HAS-462)
             case FIRE_ALARM, FIRE_ALARM_OVER -> "fire-";
+            //one notification of load shedding on the phone (HAS-522): a load still at work and the end replace the start
+            case LOAD_SHEDDING_STARTED, LOAD_SHEDDING_DEVICE_RUNNING, LOAD_SHEDDING_OVER -> "load-shedding-";
         };
         return kind + notification.getDeviceId();
     }
@@ -85,11 +87,13 @@ final class PushPayload {
         return jsonMapper.writeValueAsBytes(Map.of("notification", shown));
     }
 
-    //what nobody has to act on: the acknowledgement, and the end of the smog (HAS-430) or of a fire alarm (HAS-462) -
+    //what nobody has to act on: the acknowledgement, and the end of the smog (HAS-430), of a fire alarm (HAS-462) or of
+    //load shedding (HAS-522) -
     //good news, it replaces the warning silently and goes by itself
     private static boolean isQuiet(final HouseholdNotification notification) {
         return notification.getEvent() == HouseholdEvent.APPLIANCE_ACKNOWLEDGED
             || notification.getEvent() == HouseholdEvent.SMOG_OVER
-            || notification.getEvent() == HouseholdEvent.FIRE_ALARM_OVER;
+            || notification.getEvent() == HouseholdEvent.FIRE_ALARM_OVER
+            || notification.getEvent() == HouseholdEvent.LOAD_SHEDDING_OVER;
     }
 }

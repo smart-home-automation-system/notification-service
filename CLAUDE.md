@@ -38,7 +38,7 @@ review.
   household test message to the household channel (Discord only; with `sms=true` also an SMS to the
   administrators, HAS-275; on the alert call too since HAS-335). It is deliberately **not**
   routed by `api-gateway-service`.
-- Uses libraries: `smart-home-sdk` 1.25.0 (`GateOpenSource.panel` - HAS-481; 1.24.0, a fire alarm and its `room` - HAS-462; 1.23.0, a garage gate left open, `openSince` / `temperature` - HAS-472; 1.22.0, the doorbell and the gate, `source` - HAS-451; the household models, since HAS-274; `member` since HAS-347; 1.15.0 since HAS-335; `MemberRequest` of 1.17.0 since HAS-410; its marks of 1.19.0 since HAS-416; the smog events and `pm10` / `pm25` of 1.21.0 since HAS-430) and
+- Uses libraries: `smart-home-sdk` 1.27.0 (the three `load shedding ...` events and `devices` - HAS-522; 1.25.0, `GateOpenSource.panel` - HAS-481; 1.24.0, a fire alarm and its `room` - HAS-462; 1.23.0, a garage gate left open, `openSince` / `temperature` - HAS-472; 1.22.0, the doorbell and the gate, `source` - HAS-451; the household models, since HAS-274; `member` since HAS-347; 1.15.0 since HAS-335; `MemberRequest` of 1.17.0 since HAS-410; its marks of 1.19.0 since HAS-416; the smog events and `pm10` / `pm25` of 1.21.0 since HAS-430) and
   `cholewa-commons` (2.0.0 since HAS-498 - with Spring Boot 4.2.0 and `spring-boot-starter-rabbitmq` in place of `spring-boot-starter-amqp`; 1.14.0 since HAS-430; 1.13.0 since HAS-335; 1.12.0 since HAS-276; 1.11.0 since HAS-274). The `WebClient`s of the push
   transport are built from the injected builder, so the Logbook filter of the library logs them
   with the `traceId` - there is no own `LogbookClientHandler`, and none may be added (every call
@@ -211,6 +211,20 @@ review.
     deserializer of `RoomName` on a copy of the mapper, a WARN): this service reads no registry, so it is not among the
     services that move to a new SDK first, and a new room must never drop an alarm. Smoke test `event=fire alarm` /
     `fire alarm over` (a smoke detector of the kitchen), with `sms=true` to the administrators alone.
+  - **Load shedding** (HAS-522, `load shedding started` / `load shedding device running` / `load shedding over` of
+    smart-home-sdk 1.27.0, published by energy-service - HAS-525; epic HAS-520): on the household channel, title `Praca na
+    baterii` / `Prąd z sieci wrócił` - the subject is the inverter, never read as an appliance (`isLoadShedding` is asked
+    before the Polish names); the loads of `devices` after a colon as energy-service names them, blank ones left out, the
+    verb of a load still at work agreeing in number only. The start puts the warning about the hob and the oven before the
+    list, so a cut SMS keeps it. **Texted**: the start and a load still at work, to the members at home (the default
+    recipients), title first; **the end never** (`isTexted`). **Pushed**: all three to the members at home, one tag
+    `load-shedding-<deviceId>` - a load still at work replaces the start on the phone, the end replaces it silently
+    (`isQuiet`). **The SMS text is one rule** (`SmsText.of(notification, message)`): the transport and the smoke test
+    (`SmsSmoke`) put the title first for a garage gate, a fire alarm and load shedding, so the smoke test texts what a real
+    message sends; the smoke test refuses `sms=true` for whatever `isTexted` refuses and for the intercom channel.
+    Smoke test `event=load shedding started` / `device running` / `over` (the `SOLAX` with sample loads). Must run
+    before energy-service publishes: an event this version does not know fails the payload of that message alone (an
+    ERROR), never another one.
   - **Every transport is tried, all at once, and a failed one fails nothing else**
     (`HouseholdDispatcher`, `flatMap`): logged at ERROR with the transport named. At once and not
     in series: Discord retrying for over a minute must not hold back the SMS and the push. The

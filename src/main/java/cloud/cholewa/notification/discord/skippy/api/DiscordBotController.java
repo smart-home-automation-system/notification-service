@@ -25,6 +25,7 @@ import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.List;
 
 /**
  * Sends a message by hand - the smoke test through a port-forward; deliberately not routed by the
@@ -40,6 +41,9 @@ import java.time.ZoneId;
  * HAS-481); never texted either. {@code event=fire alarm}
  * and {@code event=fire alarm over} (HAS-462) are a sample alarm and its end of a smoke detector of the kitchen - with
  * {@code sms=true} texted to the administrators alone, never to every member as the real alarm is.
+ * {@code event=load shedding started}, {@code load shedding device running} and {@code load shedding over} (HAS-522) are
+ * samples of the SOLAX inverter with two loads cut, one still at work and three switched back on; the end is never
+ * texted, so with {@code sms=true} it is refused.
  */
 @RestController
 @RequiredArgsConstructor
@@ -52,6 +56,12 @@ public class DiscordBotController {
     //the values of the two events themselves: the sample gives them a detector and a room
     static final String FIRE_SAMPLE = "fire alarm";
     static final String FIRE_OVER_SAMPLE = "fire alarm over";
+    //the values of the three events of load shedding (HAS-522): the sample gives them the inverter and two loads
+    static final String LOAD_SHEDDING_STARTED_SAMPLE = "load shedding started";
+    static final String LOAD_SHEDDING_DEVICE_RUNNING_SAMPLE = "load shedding device running";
+    static final String LOAD_SHEDDING_OVER_SAMPLE = "load shedding over";
+    //the device of the default sample, and a load of the samples of load shedding
+    private static final String DISHWASHER = "Zmywarka";
 
     private final DiscordBotService service;
     private final ObjectProvider<SmsSmoke> smsSmoke;
@@ -108,12 +118,14 @@ public class DiscordBotController {
             .flatMap(notification -> texting
                 .then(Mono.fromCallable(() -> HouseholdMessages.of(notification)))
                 .flatMap(message -> service.sendHouseholdMessage(notification, message)
-                    .then(texting.flatMap(smoke -> smoke.sendToAdministrators(message)).then())))
+                    .then(texting.flatMap(smoke -> smoke.sendToAdministrators(notification, message)).then())))
             .thenReturn(ResponseEntity.ok().build());
     }
 
+    //what the real path never texts, and the samples of the intercom channel - the garage sample too, whose alarm the
+    //real path texts to the members named for it, never to the administrators of a smoke test
     private static boolean neverTexted(final HouseholdNotification notification) {
-        return HouseholdMessages.isSmog(notification) || HouseholdMessages.isIntercom(notification);
+        return !HouseholdMessages.isTexted(notification) || HouseholdMessages.isIntercom(notification);
     }
 
     private static HouseholdNotification sampleOf(final String event, final String subject, final int reminder,
@@ -124,8 +136,27 @@ public class DiscordBotController {
             case GARAGE_SAMPLE -> garageSample(subject);
             case FIRE_SAMPLE -> fireSample(HouseholdEvent.FIRE_ALARM, subject);
             case FIRE_OVER_SAMPLE -> fireSample(HouseholdEvent.FIRE_ALARM_OVER, subject);
+            case LOAD_SHEDDING_STARTED_SAMPLE -> loadSheddingSample(HouseholdEvent.LOAD_SHEDDING_STARTED, subject,
+                List.of("Czajnik", "Pralka"));
+            case LOAD_SHEDDING_DEVICE_RUNNING_SAMPLE -> loadSheddingSample(HouseholdEvent.LOAD_SHEDDING_DEVICE_RUNNING,
+                subject, List.of(DISHWASHER));
+            case LOAD_SHEDDING_OVER_SAMPLE -> loadSheddingSample(HouseholdEvent.LOAD_SHEDDING_OVER, subject,
+                List.of("Czajnik", "Pralka", DISHWASHER));
             default -> testNotification(event, subject, reminder, member, source);
         };
+    }
+
+    //a sample event of load shedding of the SOLAX inverter with the loads it is about (HAS-522)
+    private static HouseholdNotification loadSheddingSample(final HouseholdEvent event, final String subject,
+                                                           final List<String> devices) {
+        return HouseholdNotification.builder()
+            .event(event)
+            .subject(subject == null ? "SOLAX" : subject)
+            .deviceId(1L)
+            .occurredAt(LocalDateTime.now(ZoneId.systemDefault()))
+            .reminder(0)
+            .devices(devices)
+            .build();
     }
 
     //a sample alarm, or its end, of a smoke detector of the kitchen (HAS-462)
@@ -188,7 +219,7 @@ public class DiscordBotController {
         }
         return HouseholdNotification.builder()
             .event(householdEvent)
-            .subject(subject == null ? "Zmywarka" : subject)
+            .subject(subject == null ? DISHWASHER : subject)
             .deviceId(1L)
             .occurredAt(LocalDateTime.now(ZoneId.systemDefault()))
             .reminder(reminder)
