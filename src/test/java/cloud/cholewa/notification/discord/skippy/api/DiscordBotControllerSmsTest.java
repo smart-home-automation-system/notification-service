@@ -122,7 +122,7 @@ class DiscordBotControllerSmsTest {
             .containsExactly(HouseholdEvent.FIRE_ALARM, HouseholdEvent.FIRE_ALARM_OVER);
         assertThat(posted.getAllValues().get(0).title()).isEqualTo("Alarm pożarowy");
         assertThat(posted.getAllValues().get(1).text()).isEqualTo("Czujka dymu w pomieszczeniu: kuchnia - alarm ustał.");
-        verify(smsSmoke).sendToAdministrators(eq(event.getAllValues().get(0)), eq(posted.getAllValues().get(0)));
+        verify(smsSmoke).sendToAdministrators(event.getAllValues().get(0), posted.getAllValues().get(0));
     }
 
     //HAS-430: event=smog is a sample smog warning on Discord - never texted, so with sms=true it is refused

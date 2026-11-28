@@ -60,6 +60,8 @@ public class DiscordBotController {
     static final String LOAD_SHEDDING_STARTED_SAMPLE = "load shedding started";
     static final String LOAD_SHEDDING_DEVICE_RUNNING_SAMPLE = "load shedding device running";
     static final String LOAD_SHEDDING_OVER_SAMPLE = "load shedding over";
+    //the device of the default sample, and a load of the samples of load shedding
+    private static final String DISHWASHER = "Zmywarka";
 
     private final DiscordBotService service;
     private final ObjectProvider<SmsSmoke> smsSmoke;
@@ -137,9 +139,9 @@ public class DiscordBotController {
             case LOAD_SHEDDING_STARTED_SAMPLE -> loadSheddingSample(HouseholdEvent.LOAD_SHEDDING_STARTED, subject,
                 List.of("Czajnik", "Pralka"));
             case LOAD_SHEDDING_DEVICE_RUNNING_SAMPLE -> loadSheddingSample(HouseholdEvent.LOAD_SHEDDING_DEVICE_RUNNING,
-                subject, List.of("Zmywarka"));
+                subject, List.of(DISHWASHER));
             case LOAD_SHEDDING_OVER_SAMPLE -> loadSheddingSample(HouseholdEvent.LOAD_SHEDDING_OVER, subject,
-                List.of("Czajnik", "Pralka", "Zmywarka"));
+                List.of("Czajnik", "Pralka", DISHWASHER));
             default -> testNotification(event, subject, reminder, member, source);
         };
     }
@@ -217,7 +219,7 @@ public class DiscordBotController {
         }
         return HouseholdNotification.builder()
             .event(householdEvent)
-            .subject(subject == null ? "Zmywarka" : subject)
+            .subject(subject == null ? DISHWASHER : subject)
             .deviceId(1L)
             .occurredAt(LocalDateTime.now(ZoneId.systemDefault()))
             .reminder(reminder)

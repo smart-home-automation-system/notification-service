@@ -224,10 +224,7 @@ public final class HouseholdMessages {
         final List<String> devices = devicesOf(notification);
         final String named = String.join(", ", devices);
         return switch (notification.getEvent()) {
-            case LOAD_SHEDDING_DEVICE_RUNNING -> new HouseholdMessage(LOAD_SHEDDING_TITLE, devices.size() > 1
-                ? "Wciąż pracują: " + named + ". Zatrzymaj je, jeśli możesz - zostaną wyłączone, gdy skończą pracę."
-                : "Wciąż pracuje: " + (devices.isEmpty() ? "urządzenie" : named)
-                    + ". Zatrzymaj je, jeśli możesz - zostanie wyłączone, gdy skończy pracę.",
+            case LOAD_SHEDDING_DEVICE_RUNNING -> new HouseholdMessage(LOAD_SHEDDING_TITLE, stillRunning(devices),
                 footer, LOAD_SHEDDING_DEVICE_RUNNING_COLOR);
             case LOAD_SHEDDING_OVER -> new HouseholdMessage(LOAD_SHEDDING_OVER_TITLE,
                 devices.isEmpty() ? "Urządzenia znów włączone." : "Urządzenia znów włączone: " + named + ".",
@@ -236,6 +233,16 @@ public final class HouseholdMessages {
                 + " Nie używaj płyty indukcyjnej ani piekarnika."
                 + (devices.isEmpty() ? "" : " Wyłączone: " + named + "."), footer, LOAD_SHEDDING_STARTED_COLOR);
         };
+    }
+
+    //one load or more: the verb and the pronoun agree in number, the names stay as they come
+    private static String stillRunning(final List<String> devices) {
+        if (devices.size() > 1) {
+            return "Wciąż pracują: " + String.join(", ", devices)
+                + ". Zatrzymaj je, jeśli możesz - zostaną wyłączone, gdy skończą pracę.";
+        }
+        final String device = devices.isEmpty() ? "urządzenie" : devices.getFirst();
+        return "Wciąż pracuje: " + device + ". Zatrzymaj je, jeśli możesz - zostanie wyłączone, gdy skończy pracę.";
     }
 
     //a blank name is left out - the SDK bounds a name from 1 character, and a space is one
